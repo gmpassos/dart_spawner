@@ -2,6 +2,7 @@
 
 - Adjust package description.
 - Adjust `README.md`.
+  - Added `codecov.io` badge.
 
 ## 1.0.0
 
