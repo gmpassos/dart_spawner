@@ -10,7 +10,8 @@
 [![Code size](https://img.shields.io/github/languages/code-size/gmpassos/dart_spawner?logo=github&logoColor=white)](https://github.com/gmpassos/dart_spawner)
 [![License](https://img.shields.io/github/license/gmpassos/dart_spawner?logo=open-source-initiative&logoColor=green)](https://github.com/gmpassos/dart_spawner/blob/master/LICENSE)
 
-Runs a Dart script/file/project inside a new Isolate of the current process.
+Runs a Dart script/File/Uri inside a new Isolate of the current Dart VM.
+It also can spawn a Dart File from another Dart project/package into the current Dart VM.
 
 ## Usage
 
@@ -48,7 +49,7 @@ Exit code: 0
 
 ## Spawning a Dart file inside the current Dart project:
 
-To run a Dart File inside
+To run a Dart File inside the current Dart project (used in the main Dart entry point).
 
 ```dart
 import 'package:dart_spawner/dart_spawner.dart';
@@ -102,8 +103,8 @@ void main() async {
 ## Dart VM
 
 Note that `DartSpawner` uses [Isolate.spawnUri][isolate_spawnUri]
-to run Dart Entry Point (script/file/Uri). This is not supported outside the Dart VM
-or in compiled dart files (`dart compile exe foo.dart`)!
+to run a Dart Entry Point (script/file/Uri). This is not supported outside the Dart VM
+or in a compiled dart file (`dart compile exe foo.dart`)!
 
 [isolate_spawnUri]: https://api.dart.dev/stable/2.13.4/dart-isolate/Isolate/spawnUri.html
 

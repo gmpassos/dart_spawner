@@ -1,3 +1,8 @@
+## 1.0.1
+
+- Adjust package description.
+- Adjust `README.md`.
+
 ## 1.0.0
 
 - Support to spawn Dart entry points: script, file and Uri.
