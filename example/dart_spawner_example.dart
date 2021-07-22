@@ -11,11 +11,7 @@ void main() async {
 
   print('Spawning Script: <<<\n\n$script\n>>>');
 
-  var file = await spawner.projectSubFile('test/hello-world.dart');
-
-  print('Spawning file: $file');
-
-  var spawned = await spawner.spawnDart(file, ['a', 'b', 'c']);
+  var spawned = await spawner.spawnDart(script, ['a', 'b', 'c']);
 
   print('Spawned: $spawned');
 

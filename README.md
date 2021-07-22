@@ -19,27 +19,93 @@ You can run a Dart script (from a `String`) into a new Isolate:
 ```dart
 import 'package:dart_spawner/dart_spawner.dart';
 
-void main() {
+void main() async {
+  var spawner = DartSpawner();
+  print(spawner);
 
+  var script = r'''
+    void main(List<String> args) {
+      print('>> From Script! Args: $args');
+    }
+  ''';
+
+  var spawned = await spawner.spawnDart(script, ['a', 'b', 'c']);
+  print('Spawned: $spawned');
+
+  var exitCode = await spawned.exitCode;
+  print('Exit code: $exitCode');
 }
-
 ```
 
-## Running a Project
+Output:
 
-You also can run a Dart script/file that exists in another Dart project, pointing the project
-directory:
+```text
+DartSpawner{ id: 1, spawned: false, finished: false }
+>> From Script! Args: [a, b, c]
+Spawned: SpawnedIsolate{ id: 1, type: <script>, finished: false, projectDirectory: Directory: '/path/to/current/dart_project' }
+Exit code: 0
+```
+
+## Spawning a Dart file inside the current Dart project:
+
+To run a Dart File inside
 
 ```dart
 import 'package:dart_spawner/dart_spawner.dart';
 
-void main() {
+void main() async {
+  var spawner = DartSpawner();
+  print(spawner);
 
+  var file = await spawner.projectSubFile('test/hello-world.dart');
+  print('Spawning file: $file');
+
+  var spawned = await spawner.spawnDart(file, ['x', 'y']);
+  print('Spawned: $spawned');
+
+  var exitCode = await spawned.exitCode;
+  print('Exit code: $exitCode');
 }
 
 ```
 
-- NOTE: It will use the dependencies of the target project and not the ones used in the initial `Isolate`.
+## Spawning a Dart file in ANOTHER Dart project:
+
+You can also run a Dart script/file that exists in another Dart project/package,
+passing the project directory to the `DartSpawner` constructor:
+
+```dart
+import 'dart:io';
+
+import 'package:dart_spawner/dart_spawner.dart';
+
+void main() async {
+  var spawner = DartSpawner(
+    directory: Directory('/path/to/another/dart_project/'),
+  );
+
+  print(spawner);
+
+  var file = await spawner.projectSubFile('example/project_example.dart');
+  print('Spawning file: $file');
+
+  var spawned = await spawner.spawnDart(file, ['some', 'args']);
+  print('Spawned: $spawned');
+
+  var exitCode = await spawned.exitCode;
+  print('Exit code: $exitCode');
+}
+```
+
+- NOTE: It will use the dependencies of the target project and not the ones used in the current `Isolate`.
+
+## Dart VM
+
+Note that `DartSpawner` uses [Isolate.spawnUri][isolate_spawnUri]
+to run Dart Entry Point (script/file/Uri). This is not supported outside the Dart VM
+or in compiled dart files (`dart compile exe foo.dart`)!
+
+[isolate_spawnUri]: https://api.dart.dev/stable/2.13.4/dart-isolate/Isolate/spawnUri.html
 
 ## Features and bugs
 
