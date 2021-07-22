@@ -2,7 +2,7 @@
 
 [![pub package](https://img.shields.io/pub/v/dart_spawner.svg?logo=dart&logoColor=00b9fc)](https://pub.dartlang.org/packages/dart_spawner)
 [![Null Safety](https://img.shields.io/badge/null-safety-brightgreen)](https://dart.dev/null-safety)
-[![codecov](https://codecov.io/gh/gmpassos/dart_spawner/branch/master/graph/badge.svg?token=GOHOemF0cr)](https://codecov.io/gh/gmpassos/dart_spawner)
+[![Codecov](https://img.shields.io/codecov/c/github/gmpassos/dart_spawner)](https://app.codecov.io/gh/gmpassos/dart_spawner)
 [![CI](https://img.shields.io/github/workflow/status/gmpassos/dart_spawner/Dart%20CI/master?logo=github-actions&logoColor=white)](https://github.com/gmpassos/dart_spawner/actions)
 [![GitHub Tag](https://img.shields.io/github/v/tag/gmpassos/dart_spawner?logo=git&logoColor=white)](https://github.com/gmpassos/dart_spawner/releases)
 [![New Commits](https://img.shields.io/github/commits-since/gmpassos/dart_spawner/latest?logo=git&logoColor=white)](https://github.com/gmpassos/dart_spawner/network)
