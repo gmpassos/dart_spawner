@@ -1,6 +1,6 @@
 name: dart_spawner
 description: Runs a Dart script/File/Uri inside a new Isolate of the current Dart VM. It also can spawn a Dart File from another Dart project/package into the current Dart VM.
-version: 1.0.1
+version: 1.0.2
 homepage: https://github.com/gmpassos/dart_spawner
 
 environment:

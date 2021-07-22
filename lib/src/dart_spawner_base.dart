@@ -708,7 +708,7 @@ void spawnedMain(List<String> args, SendPort parentPort, int id, Function run,
     }
   });
 
-  print('RUN> $run');
+  print('[$isolateId] Running: $run');
 
   FutureOr ret;
 
@@ -718,13 +718,12 @@ void spawnedMain(List<String> args, SendPort parentPort, int id, Function run,
     ret = run(args);
   }
 
-  print('RET> $ret');
+  print('[$isolateId] Return: $ret');
 
   parentPort.send({'status': 'ok', 'port': messagePort.sendPort});
 
-  print('RET>> $ret');
-
   if (ret is Future) {
+    print('[$isolateId] Waiting return: $ret');
     await ret;
   }
 

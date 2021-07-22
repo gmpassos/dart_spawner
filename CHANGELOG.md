@@ -1,3 +1,7 @@
+## 1.0.2
+
+- Improved `spawnedMain` console logging.
+
 ## 1.0.1
 
 - Adjust package description.
