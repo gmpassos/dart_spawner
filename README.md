@@ -12,7 +12,7 @@
 [![License](https://img.shields.io/github/license/gmpassos/dart_spawner?logo=open-source-initiative&logoColor=green)](https://github.com/gmpassos/dart_spawner/blob/master/LICENSE)
 
 Runs a Dart script/File/Uri inside a new Isolate of the current Dart VM.
-It also can spawn a Dart File from another Dart project/package into the current Dart VM.
+It also can spawn a Dart File from another Dart project/package, using its dependencies, into the current Dart VM.
 
 ## Usage
 
