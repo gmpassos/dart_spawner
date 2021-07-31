@@ -205,7 +205,8 @@ void main(List<String> args, dynamic parentPort) {
       var fileTxt = await spawner.projectSubFile('bin/test_project.dart.txt');
       expect(fileTxt.existsSync(), isTrue);
 
-      var fileDart = File( pack_path.join( fileTxt.parent.path , 'test_project.dart') ) ;
+      var fileDart =
+          File(pack_path.join(fileTxt.parent.path, 'test_project.dart'));
       fileTxt.copySync(fileDart.path);
 
       expect(fileDart.existsSync(), isTrue);
