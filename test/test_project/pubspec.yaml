@@ -1,0 +1,11 @@
+name: test_project
+description: Test project for `Isolate.spawnUri` with a diferent packageConfig.
+version: 0.0.1
+publish_to: none
+
+environment:
+  sdk: '>=2.13.0 <3.0.0'
+
+dependencies:
+  # A dependency not used by `dart_spawner`:
+  xml: ^5.1.2

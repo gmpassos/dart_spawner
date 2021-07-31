@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:isolate';
 
 import 'package:dart_spawner/dart_spawner.dart';
+import 'package:path/path.dart' as pack_path;
 import 'package:test/test.dart';
 
 void main() {
@@ -9,14 +10,14 @@ void main() {
     setUp(() {});
 
     test('package File/Directory', () async {
-      expect((await Isolate.current.packageFile('test/hello-world.dart')).path,
-          endsWith('hello-world.dart'));
+      expect((await Isolate.current.packageFile('test/hello_world.dart')).path,
+          endsWith('hello_world.dart'));
 
       var testDir = await Isolate.current.packageDirectory('test');
       expect(testDir.path, endsWith('test'));
 
-      expect(testDir.subFile('hello-world.dart').path,
-          endsWith('hello-world.dart'));
+      expect(testDir.subFile('hello_world.dart').path,
+          endsWith('hello_world.dart'));
     });
   });
 
@@ -31,7 +32,7 @@ void main() {
       expect(await dartProject.projectPackageName, equals('dart_spawner'));
 
       expect((await dartProject.projectPackageConfigUri).toString(),
-          endsWith('.packages'));
+          matches(RegExp(r'/(?:\.packages|package_config.json)$')));
 
       expect((await dartProject.getProjectDependencyVersion('async_extension')),
           isNotEmpty);
@@ -65,13 +66,13 @@ void main() {
       expect(await spawner.supportsLaunchObservatory(), expectMatcher);
     });
 
-    test('hello-world.dart', () async {
+    test('hello_world.dart', () async {
       var spawner = DartSpawner(logToConsole: true);
       print(spawner);
 
       expect(spawner.isFinished, isFalse);
 
-      var file = await spawner.projectSubFile('test/hello-world.dart');
+      var file = await spawner.projectSubFile('test/hello_world.dart');
       print('Spawning File: $file');
 
       var spawned = await spawner.spawnDart(
@@ -93,13 +94,13 @@ void main() {
       expect(spawned.isFinished, isTrue);
     });
 
-    test('hello-world.dart + stop()', () async {
+    test('hello_world.dart + stop()', () async {
       var spawner = DartSpawner(logToConsole: true);
       print(spawner);
 
       expect(spawner.isFinished, isFalse);
 
-      var file = await spawner.projectSubFile('test/hello-world.dart');
+      var file = await spawner.projectSubFile('test/hello_world.dart');
       print('Spawning File: $file');
 
       var spawned = await spawner.spawnDart(
@@ -178,6 +179,54 @@ void main(List<String> args, dynamic parentPort) {
       var exitCode = await spawned.exitCode;
       print('Exit code: $exitCode');
       expect(exitCode, equals(0));
+    });
+
+    test('bin/test_project.dart', () async {
+      var currentDir = Directory.current;
+      var testDir = currentDir.path.endsWith('test')
+          ? currentDir
+          : Directory(pack_path.join(currentDir.path, 'test'));
+
+      expect(testDir.existsSync(), isTrue);
+
+      var testProjectDir =
+          Directory(pack_path.join(testDir.path, 'test_project'));
+
+      var spawner = DartSpawner(directory: testProjectDir, logToConsole: true);
+      print(spawner);
+
+      expect(spawner.isFinished, isFalse);
+
+      expect(
+          await spawner.cleanDartPubGetGeneratedFiles(
+              confirmProjectName: 'test_project'),
+          isTrue);
+
+      var file = await spawner.projectSubFile('bin/test_project.dart');
+      print('Spawning File: $file');
+
+      var spawned = await spawner.spawnDart(
+        file,
+        ['Test Title', 'English', '11.99'],
+        debugName: 'test_project',
+      );
+
+      print('Spawned: $spawned');
+      expect(spawned, isNotNull);
+
+      print(spawner);
+
+      var exitCode = await spawned.exitCode;
+      print('Exit code: $exitCode');
+      expect(exitCode, equals(0));
+
+      expect(spawner.isFinished, isTrue);
+      expect(spawned.isFinished, isTrue);
+
+      expect(
+          await spawner.cleanDartPubGetGeneratedFiles(
+              confirmProjectName: 'test_project'),
+          isTrue);
     });
   });
 }
