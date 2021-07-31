@@ -1,0 +1,7 @@
+##
+## dependency_validator
+##
+
+## Exclude `test_project`:
+exclude:
+  - test/test_project/**
