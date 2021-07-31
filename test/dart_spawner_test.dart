@@ -202,7 +202,17 @@ void main(List<String> args, dynamic parentPort) {
               confirmProjectName: 'test_project'),
           isTrue);
 
+      var fileTxt = await spawner.projectSubFile('bin/test_project.dart.txt');
+      expect(fileTxt.existsSync(), isTrue);
+
+      var fileDart = File( pack_path.join( fileTxt.parent.path , 'test_project.dart') ) ;
+      fileTxt.copySync(fileDart.path);
+
+      expect(fileDart.existsSync(), isTrue);
+
       var file = await spawner.projectSubFile('bin/test_project.dart');
+      expect(file.existsSync(), isTrue);
+
       print('Spawning File: $file');
 
       var spawned = await spawner.spawnDart(
@@ -222,6 +232,8 @@ void main(List<String> args, dynamic parentPort) {
 
       expect(spawner.isFinished, isTrue);
       expect(spawned.isFinished, isTrue);
+
+      fileDart.deleteSync();
 
       expect(
           await spawner.cleanDartPubGetGeneratedFiles(
