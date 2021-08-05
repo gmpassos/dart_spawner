@@ -5,8 +5,9 @@ import 'dart:isolate';
 
 import 'package:async_extension/async_extension.dart';
 import 'package:dart_spawner/dart_spawner.dart';
-import 'package:path/path.dart' as pack_path;
 import 'package:yaml/yaml.dart';
+
+import 'dart_spawner_tools.dart';
 
 typedef _Logger = void Function(String type, dynamic message);
 
@@ -236,11 +237,11 @@ class DartProject {
     var filePackages = await projectSubFile('.packages');
     var dirDartTools = await projectSubDirectory('.dart_tool');
 
-    _deleteFile(projDir, filePubspecLock, verbose: verbose);
-    _deleteFile(projDir, filePackages, verbose: verbose);
+    deleteFile(projDir, filePubspecLock, verbose: verbose);
+    deleteFile(projDir, filePackages, verbose: verbose);
 
     if (dirDartTools.existsSync()) {
-      _deleteDirectory(projDir, dirDartTools, verbose: verbose);
+      deleteDirectory(projDir, dirDartTools, recursive: true, verbose: verbose);
     }
 
     return true;
@@ -903,44 +904,4 @@ Future<bool> _isIsolatePaused(Isolate isolate, Duration pingTimeout) async {
   receivePort.close();
 
   return !pong;
-}
-
-bool _isFileInDirectory(Directory parentDir, File file) {
-  var parentPath = parentDir.path;
-
-  if (!parentPath.endsWith(pack_path.separator)) {
-    parentPath = '$parentPath${pack_path.separator}';
-  }
-
-  return file.path.startsWith(parentPath);
-}
-
-void _deleteFile(Directory directoryScope, File file, {bool verbose = false}) {
-  if (!_isFileInDirectory(directoryScope, file)) {
-    throw StateError(
-        "File out of directory scope! directoryScope: $directoryScope ; file: $file");
-  }
-
-  if (file.existsSync()) {
-    if (verbose) {
-      print('-- Delete file: $file');
-    }
-
-    file.deleteSync();
-  }
-}
-
-void _deleteDirectory(Directory directoryScope, Directory dir,
-    {bool recursive = false, bool verbose = false}) {
-  var files = dir.listSync(recursive: recursive, followLinks: false);
-
-  for (var f in files) {
-    if (!FileSystemEntity.isDirectorySync(f.path)) {
-      _deleteFile(directoryScope, File(f.path), verbose: verbose);
-    }
-  }
-
-  for (var f in files) {
-    _deleteFile(directoryScope, File(f.path), verbose: verbose);
-  }
 }

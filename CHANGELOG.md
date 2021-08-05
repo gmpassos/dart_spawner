@@ -1,3 +1,8 @@
+## 1.0.4
+
+- `DartProject.cleanDartPubGetGeneratedFiles`: 
+  - Fix `deleteDirectory`.
+
 ## 1.0.3
 
 - `projectPackageConfigUri`:
