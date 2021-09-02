@@ -177,27 +177,274 @@ class DartProject {
   /// Runs `dart pub get` in the [projectDirectory].
   Future<bool> runDartPubGet() async {
     var workingDir = await projectDirectory;
-    return runCommand('dart', ['pub', 'get'],
+    var processInfo = await runProcess('dart', ['pub', 'get'],
         workingDirectory: workingDir.path);
+
+    var ok = await processInfo.checkExitCode();
+    if (!ok) {
+      throw StateError('Error running: dart pub get > $processInfo');
+    }
+
+    return ok;
   }
 
-  /// Runs a [Process] command.
-  Future<bool> runCommand(String commandName, List<String> args,
-      {String? workingDirectory, int expectedExpectedExitCode = 0}) async {
-    var binPath = await executablePath(commandName);
-    if (binPath == null) {
-      throw StateError('Error resolving `$commandName` binary!');
+  /// Runs a new Dart VM.
+  ///
+  /// - [entrypoint] is the Dart entrypoint, usually a Dart file.
+  /// - [args] is the arguments to pass to the [entrypoint].
+  /// - [workingDirectory] is the [Process] working directory. If `null` will use the current working directory.
+  /// - [enableVMService] - if `true` runs Dart VM with `--enable-vm-service`.
+  ///   - [vmServiceAddress] - the VM Service listen address.
+  ///   - [vmServicePort] - the VM Service listen port.
+  ///   - [pauseIsolatesOnStart] - if `true` pauses [Isolate] on VM start.
+  ///   - [pauseIsolatesOnExit] - if `true` pauses [Isolate] on VM exit.
+  ///   - [pauseIsolatesOnUnhandledExceptions] - if `true` pauses [Isolate] on Unhandled Exception.
+  /// - If [handleSignals] is `true` kills the [Process] if `SIGINT` or `SIGTERM` is triggered in the host/current process.
+  /// - If [redirectOutput] is `true` redirects the [Process] outputs to the host/current [stdout] and [stderr].
+  /// - If [catchOutput] is `true` catches the [Process] outputs to [ProcessInfo.outputBuffer] and [ProcessInfo.errorOutputBuffer].
+  /// - [stdoutFilter] is a filter for the [Process] `stdout`. Useful to remove sensitive data.
+  /// - [stderrFilter] is a filter for the [Process] `stderr`. Useful to remove sensitive data.
+  Future<ProcessInfo> runDartVM(
+    String entrypoint,
+    List<String> args, {
+    bool enableVMService = false,
+    String? vmServiceAddress,
+    int? vmServicePort,
+    bool pauseIsolatesOnStart = false,
+    bool pauseIsolatesOnExit = false,
+    bool pauseIsolatesOnUnhandledExceptions = false,
+    String? workingDirectory,
+    bool handleSignals = false,
+    bool redirectOutput = false,
+    bool catchOutput = false,
+    String Function(String o)? stdoutFilter,
+    String Function(String o)? stderrFilter,
+    void Function(ProcessSignal signal)? onSignal,
+  }) async {
+    String vmService = '';
+    if (!enableVMService) {
+      pauseIsolatesOnStart = false;
+      pauseIsolatesOnExit = false;
+      pauseIsolatesOnUnhandledExceptions = false;
+    } else {
+      if (vmServicePort != null && vmServicePort <= 1) {
+        vmServicePort = null;
+      }
+
+      if (vmServiceAddress != null) {
+        vmServiceAddress = vmServiceAddress.trim();
+        if (vmServiceAddress.isEmpty) {
+          vmServiceAddress = null;
+        }
+      }
+
+      if (vmServicePort == null) {
+        var freePort = await getFreeListenPort(
+            ports: [8181, 8171, 8191], startPort: 8161, endPort: 8191);
+
+        if (freePort != 8181) {
+          vmServicePort = freePort;
+        }
+      }
+
+      if (vmServiceAddress != null) {
+        vmServicePort ??= 8181;
+        vmService = '=$vmServicePort/$vmServiceAddress';
+      } else if (vmServicePort != null) {
+        vmService = '=$vmServicePort';
+      }
     }
+
+    return runProcess(
+      'dart',
+      [
+        if (enableVMService) '--enable-vm-service$vmService',
+        if (pauseIsolatesOnStart) '--pause-isolates-on-start',
+        if (pauseIsolatesOnExit) '--pause-isolates-on-exit',
+        if (pauseIsolatesOnUnhandledExceptions)
+          '--pause-isolates-on-unhandled-exceptions',
+        'run',
+        entrypoint,
+        ...args
+      ],
+      workingDirectory: workingDirectory,
+      handleSignals: handleSignals,
+      redirectOutput: redirectOutput,
+      catchOutput: catchOutput,
+      stdoutFilter: stdoutFilter,
+      stderrFilter: stderrFilter,
+      onSignal: onSignal,
+    );
+  }
+
+  /// Returns a [ServerSocket] port free to listen.
+  ///
+  /// - [ports] is a [List] of ports to test.
+  /// - [startPort] and [endPort] defines a range of ports to check.
+  /// - If [shufflePorts] is `true` the ports order will be random.
+  static Future<int?> getFreeListenPort(
+      {Iterable<int>? ports,
+      Iterable<int>? skipPort,
+      int? startPort,
+      int? endPort,
+      bool shufflePorts = false,
+      Duration? testTimeout}) async {
+    var checkPortsSet = <int>{};
+    if (ports != null) {
+      checkPortsSet.addAll(ports);
+    }
+
+    if (startPort != null && endPort != null) {
+      if (startPort <= endPort) {
+        for (var p = startPort; p <= endPort; ++p) {
+          checkPortsSet.add(p);
+        }
+      } else {
+        for (var p = endPort; p <= startPort; ++p) {
+          checkPortsSet.add(p);
+        }
+      }
+    }
+
+    var checkPorts = checkPortsSet.toList();
+
+    if (skipPort != null) {
+      checkPorts.removeWhere((p) => skipPort.contains(p));
+    }
+
+    if (shufflePorts) {
+      checkPorts.shuffle();
+    }
+
+    for (var port in checkPorts) {
+      if (await isFreeListenPort(port, testTimeout: testTimeout)) {
+        return port;
+      }
+    }
+
+    return null;
+  }
+
+  /// Returns `true` if [port] is free to listen.
+  static Future<bool> isFreeListenPort(int port,
+      {Duration? testTimeout}) async {
+    testTimeout ??= Duration(seconds: 1);
+
+    try {
+      var socket =
+          await Socket.connect('localhost', port, timeout: testTimeout);
+      try {
+        socket.close();
+      } catch (_) {}
+      return false;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  /// Runs a [Process] command and returns it.
+  ///
+  /// - [commandName] is the command to be executed to start the [Process].
+  /// - [args] is the arguments to pass to the [Process].
+  /// - If [resolveCommandPath] is `true` resolves [commandName] to the local path of the command binary, using [executablePath].
+  /// - [workingDirectory] is the [Process] working directory. If `null` will use the current working directory.
+  /// - If [handleSignals] is `true` kills the [Process] if `SIGINT` or `SIGTERM` is triggered in the host/current process.
+  ///   - [onSignal] is the hook for when a `SIGINT` or `SIGTERM` is redirected.
+  /// - If [redirectOutput] is `true` redirects the [Process] outputs to the host/current [stdout] and [stderr].
+  /// - If [catchOutput] is `true` catches the [Process] outputs to [ProcessInfo.outputBuffer] and [ProcessInfo.errorOutputBuffer].
+  /// - [stdoutFilter] is a filter for the [Process] `stdout`. Useful to remove sensitive data.
+  /// - [stderrFilter] is a filter for the [Process] `stderr`. Useful to remove sensitive data.
+  Future<ProcessInfo> runProcess(String commandName, List<String> args,
+      {bool resolveCommandPath = true,
+      String? workingDirectory,
+      bool handleSignals = false,
+      bool redirectOutput = false,
+      bool catchOutput = false,
+      String Function(String o)? stdoutFilter,
+      String Function(String o)? stderrFilter,
+      void Function(ProcessSignal signal)? onSignal}) async {
+    String? binPath;
+    if (resolveCommandPath) {
+      binPath = await executablePath(commandName);
+      if (binPath == null) {
+        throw StateError('Error resolving `$commandName` binary!');
+      }
+    } else {
+      binPath = commandName;
+    }
+
+    log('INFO',
+        'Process.start> $binPath $args > workingDirectory: $workingDirectory');
 
     var process =
-        await Process.run(binPath, args, workingDirectory: workingDirectory);
+        await Process.start(binPath, args, workingDirectory: workingDirectory);
 
-    if (process.exitCode != expectedExpectedExitCode) {
-      throw StateError(
-          'Error running `$binPath $args`. workingDirectory: $workingDirectory');
+    StreamSubscription<ProcessSignal>? listenSigInt;
+    StreamSubscription<ProcessSignal>? listenSigTerm;
+
+    if (handleSignals) {
+      listenSigInt = ProcessSignal.sigint.watch().listen((s) {
+        if (onSignal != null) onSignal(s);
+        process.kill(ProcessSignal.sigint);
+      });
+
+      listenSigTerm = ProcessSignal.sigterm.watch().listen((s) {
+        if (onSignal != null) onSignal(s);
+        process.kill(ProcessSignal.sigterm);
+      });
     }
 
-    return true;
+    var processInfo = ProcessInfo(process, binPath, args, workingDirectory);
+
+    var outputDecoder = systemEncoding.decoder;
+    final stdoutFilterF = stdoutFilter ?? (o) => o;
+    final stderrFilterF = stderrFilter ?? (o) => o;
+
+    if (catchOutput && redirectOutput) {
+      // ignore: unawaited_futures
+      process.stdout.transform(outputDecoder).forEach((o) {
+        o = stdoutFilterF(o);
+        stdout.write(o);
+        processInfo.outputBuffer.add(o);
+      });
+      // ignore: unawaited_futures
+      process.stderr.transform(outputDecoder).forEach((o) {
+        o = stderrFilterF(o);
+        stderr.write(o);
+        processInfo.errorOutputBuffer.add(o);
+      });
+    } else if (catchOutput) {
+      // ignore: unawaited_futures
+      process.stdout.transform(outputDecoder).forEach((o) {
+        o = stdoutFilterF(o);
+        processInfo.outputBuffer.add(o);
+      });
+      // ignore: unawaited_futures
+      process.stderr.transform(outputDecoder).forEach((o) {
+        o = stderrFilterF(o);
+        processInfo.errorOutputBuffer.add(o);
+      });
+    } else if (redirectOutput) {
+      // ignore: unawaited_futures
+      process.stdout.transform(outputDecoder).forEach((o) {
+        o = stdoutFilterF(o);
+        stdout.write(o);
+      });
+      // ignore: unawaited_futures
+      process.stderr.transform(outputDecoder).forEach((o) {
+        o = stderrFilterF(o);
+        stderr.write(o);
+      });
+    }
+
+    process.exitCode.then((_) {
+      // ignore: unawaited_futures
+      listenSigInt?.cancel();
+      // ignore: unawaited_futures
+      listenSigTerm?.cancel();
+    });
+
+    return processInfo;
   }
 
   /// Ensures that [projectDirectory] has the dependencies resolved.
@@ -283,6 +530,63 @@ class DartProject {
     } else {
       return null;
     }
+  }
+}
+
+/// Executed [Process] information.
+///
+/// See [DartProject.runProcess].
+class ProcessInfo {
+  /// The executed [Process].
+  final Process process;
+
+  /// The binary path executed.
+  final String binPath;
+
+  /// The arguments passed to the process.
+  final List<String> args;
+
+  /// The [Process] working directory.
+  final String? workingDirectory;
+
+  ProcessInfo(this.process, this.binPath, this.args, this.workingDirectory);
+
+  int? _exitCode;
+
+  /// The [process.exitCode].
+  Future<int> get exitCode async => _exitCode ??= await process.exitCode;
+
+  /// Returns `true` if [exitCode] matches [expectedExitCode].
+  Future<bool> checkExitCode([int expectedExitCode = 0]) async {
+    var exitCode = await this.exitCode;
+    var ok = exitCode == expectedExitCode;
+    return ok;
+  }
+
+  /// The [process] `stdout` output buffer.
+  ///
+  /// Only populated if [DartSpawner.runProcess] is called with `catchOutput: true`.
+  List<String> outputBuffer = <String>[];
+
+  /// The [process] `stderr` output buffer.
+  ///
+  /// Only populated if [DartSpawner.runProcess] is called with `catchOutput: true`.
+  List<String> errorOutputBuffer = <String>[];
+
+  /// The [process] `stdout` output as [String]. See [outputBuffer].
+  ///
+  /// Only populated if [DartSpawner.runProcess] is called with `catchOutput: true`.
+  String get output => outputBuffer.join();
+
+  /// The [process] `stderr` output as [String]. See [errorOutputBuffer].
+  ///
+  /// Only populated if [DartSpawner.runProcess] is called with `catchOutput: true`.
+  String get errorOutput => errorOutputBuffer.join();
+
+  @override
+  String toString() {
+    var exitCode = _exitCode != null ? ', exitCode: $_exitCode' : '';
+    return 'ProcessInfo{ binPath: $binPath, args: $args, workingDirectory: $workingDirectory$exitCode }';
   }
 }
 

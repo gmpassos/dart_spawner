@@ -1,5 +1,7 @@
 import 'package:xml/xml.dart';
 
+import 'dart:io';
+
 void main(List<String> args) {
   var argTitle = args[0];
   var argLang = args[1];
@@ -27,4 +29,6 @@ void main(List<String> args) {
   print('Book title: ${title.text}');
   print('Book language: $lang');
   print('Book price: ${price.text}');
+
+  stderr.writeln('XML Finished: $argTitle');
 }

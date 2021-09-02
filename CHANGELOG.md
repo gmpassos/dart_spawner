@@ -1,3 +1,9 @@
+## 1.0.5
+
+- Renamed `runCommand` to `runProcess`.
+  - Returns a `ProcessInfo`.
+- Added `runDartVM`, to start a new Dart VM.
+
 ## 1.0.4
 
 - `DartProject.cleanDartPubGetGeneratedFiles`: 

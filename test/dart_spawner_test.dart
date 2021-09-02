@@ -234,6 +234,29 @@ void main(List<String> args, dynamic parentPort) {
       expect(spawner.isFinished, isTrue);
       expect(spawned.isFinished, isTrue);
 
+      expect(spawner.projectLibraryName, equals('test_project'));
+
+      await testRunDartVM(spawner, redirectOutput: true, catchOutput: true);
+      await testRunDartVM(spawner, redirectOutput: false, catchOutput: true);
+      await testRunDartVM(spawner, redirectOutput: true, catchOutput: false);
+
+      await testRunDartVM(spawner, vmServicePort: 8171);
+
+      await testRunDartVM(
+        spawner,
+        enableVMService: true,
+        vmServicePort: await DartProject.getFreeListenPort(
+            startPort: 8171, endPort: 8191, skipPort: [8181]),
+      );
+
+      await testRunDartVM(
+        spawner,
+        enableVMService: true,
+        vmServiceAddress: '0.0.0.0',
+        vmServicePort: await DartProject.getFreeListenPort(
+            startPort: 8191, endPort: 8171, skipPort: [8181]),
+      );
+
       fileDart.deleteSync();
 
       expect(
@@ -242,4 +265,64 @@ void main(List<String> args, dynamic parentPort) {
           isTrue);
     });
   });
+}
+
+Future<void> testRunDartVM(DartSpawner spawner,
+    {bool enableVMService = false,
+    String? vmServiceAddress,
+    int? vmServicePort,
+    bool redirectOutput = true,
+    bool catchOutput = true}) async {
+  print(
+      'Run Dart VM> enableVMService: $enableVMService ; vmServiceAddress: $vmServiceAddress ; vmServicePort: $vmServicePort');
+
+  var processInfo = await spawner.runDartVM(
+      'bin/test_project.dart', ['Test Title2', 'English', '22.99'],
+      enableVMService: enableVMService,
+      vmServiceAddress: vmServiceAddress,
+      vmServicePort: vmServicePort,
+      redirectOutput: redirectOutput,
+      catchOutput: catchOutput,
+      handleSignals: true,
+      workingDirectory: (await spawner.projectDirectory).path,
+      stdoutFilter: (o) => _filterOutputObservatoryListening(o));
+
+  await processInfo.exitCode;
+
+  print(processInfo);
+
+  if (enableVMService) {
+    expect(processInfo.binPath.endsWith('dart'), isTrue);
+
+    if (vmServiceAddress != null) {
+      vmServicePort ??= 8181;
+      expect(processInfo.args[0],
+          equals('--enable-vm-service=$vmServicePort/$vmServiceAddress'));
+    } else if (vmServicePort != null) {
+      expect(processInfo.args[0], equals('--enable-vm-service=$vmServicePort'));
+    } else {
+      expect(processInfo.args[0], startsWith('--enable-vm-service'));
+    }
+
+    expect(processInfo.args[1], equals('run'));
+  } else {
+    expect(processInfo.binPath.endsWith('dart'), isTrue);
+    expect(processInfo.args[0], equals('run'));
+  }
+
+  expect(await processInfo.checkExitCode(), isTrue);
+
+  if (catchOutput) {
+    var output = _filterOutputObservatoryListening(processInfo.output);
+    print('<<$output>>');
+
+    expect(
+        processInfo.output, allOf(contains('Test Title2'), contains('22.99')));
+
+    expect(processInfo.errorOutput.trim(), equals('XML Finished: Test Title2'));
+  }
+}
+
+String _filterOutputObservatoryListening(String s) {
+  return s.replaceAll('Observatory listening', '[Observatory listening]');
 }
