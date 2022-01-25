@@ -1,3 +1,10 @@
+## 1.0.6
+
+- Added environment variable:
+  - DART_SPAWNER_DEBUG
+  - DART_SPAWNER_STARTUP_TIMEOUT
+  - DART_SPAWNER_ISOLATE_CHECK_PING_TIMEOUT
+
 ## 1.0.5
 
 - Renamed `runCommand` to `runProcess`.

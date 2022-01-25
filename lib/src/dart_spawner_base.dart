@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:developer';
 import 'dart:io';
 import 'dart:isolate';
@@ -590,8 +589,54 @@ class ProcessInfo {
   }
 }
 
+String? _getEnv(String key) {
+  var val = Platform.environment[key];
+  if (val != null) {
+    print('** [DartSpawner] Reading environment variable: "$key" = "$val"');
+  }
+  return val;
+}
+
+int? _getEnvAsInt(String key, {bool Function(int n)? validator}) {
+  var val = _getEnv(key);
+  if (val == null) return null;
+  var n = int.tryParse(val.trim());
+  if (n == null) return null;
+  var ok = validator == null || validator(n);
+  return ok ? n : null;
+}
+
+bool? _getEnvAsBool(String key) {
+  var val = _getEnv(key);
+  if (val == null) return null;
+  val = val.trim().toLowerCase();
+  return val == 'true' || val == '1' || val == 'on';
+}
+
 /// Class capable to spawn a Dart script/[File]/[Uri] into an [Isolate].
 class DartSpawner extends DartProject {
+  /// If `true` sets the debug mode, to avoid [Isolate] issues while debugging.
+  ///
+  /// - Set by environment variable: "DART_SPAWNER_DEBUG".
+  static final bool debugMode = _getEnvAsBool('DART_SPAWNER_DEBUG') ?? false;
+
+  /// The default startup timeout.
+  ///
+  /// - Set by environment variable: "DART_SPAWNER_STARTUP_TIMEOUT" (in seconds).
+  static final Duration defaultStartupTimeout = Duration(
+      seconds: _getEnvAsInt('DART_SPAWNER_STARTUP_TIMEOUT',
+              validator: (n) => n >= 2) ??
+          45);
+
+  /// The default [Isolate] check ping timeout.
+  ///
+  /// - Set by environment variable: "DART_SPAWNER_ISOLATE_CHECK_PING_TIMEOUT" (in seconds).
+  /// - When on [debugMode] is set to 3600 sec.
+  static final Duration defaultIsolateCheckPingTimeout = Duration(
+      seconds: _getEnvAsInt('DART_SPAWNER_ISOLATE_CHECK_PING_TIMEOUT',
+              validator: (n) => n >= 1) ??
+          (debugMode ? 3600 : 2));
+
   static int _idCounter = 0;
 
   final int id = ++_idCounter;
@@ -611,9 +656,18 @@ class DartSpawner extends DartProject {
       _Logger? logger,
       bool logToConsole = false,
       Duration? startupTimeout})
-      : startupTimeout = Duration(seconds: 45),
-        isolateCheckPingTimeout = Duration(seconds: 2),
-        super(directory: directory, logger: logger, logToConsole: logToConsole);
+      : startupTimeout = defaultStartupTimeout,
+        isolateCheckPingTimeout = defaultIsolateCheckPingTimeout,
+        super(
+            directory: directory, logger: logger, logToConsole: logToConsole) {
+    logDebug(this);
+  }
+
+  static void logDebug(Object? m) {
+    if (debugMode) {
+      print('** [DartSpawner] $m');
+    }
+  }
 
   /// The exit code of the spawned Dart script/file.
   final Completer<int> exitCode = Completer<int>();
@@ -888,12 +942,13 @@ class DartSpawner extends DartProject {
         case 'ok':
           {
             startupCompleter.complete(message['port'] as SendPort?);
+            break;
           }
-          break;
         case 'stopped':
           {
             exitCode.complete(0);
             Future.delayed(Duration(seconds: 1), () => isolate.kill());
+            break;
           }
       }
     });
@@ -976,7 +1031,7 @@ class DartSpawner extends DartProject {
   String toString() {
     var projDir = projectDirectory;
     var projDirStr = projDir is Future ? null : projDir.path;
-    return 'DartSpawner{ id: $id${projDirStr != null ? ', projectDirectory: $projDirStr' : ''}, spawned: $isSpawned${isSpawned ? ', spawnedType: $spawnedType' : ''}, finished: $isFinished }';
+    return 'DartSpawner{ id: $id${projDirStr != null ? ', projectDirectory: $projDirStr' : ''}, spawned: $isSpawned${isSpawned ? ', spawnedType: $spawnedType' : ''}, finished: $isFinished, startupTimeout: $startupTimeout, isolateCheckPingTimeout: $isolateCheckPingTimeout }';
   }
 }
 
@@ -1123,7 +1178,8 @@ class SpawnedIsolate {
 }
 
 /// Helper to executed a spawned Dart script by [DartSpawner].
-void spawnedMain(List<String> args, SendPort parentPort, int id, Function run,
+Future<void> spawnedMain(
+    List<String> args, SendPort parentPort, int id, Function run,
     [FutureOr<bool> Function()? stop]) async {
   final messagePort = ReceivePort();
 
