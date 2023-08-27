@@ -8,16 +8,18 @@ import 'package:yaml/yaml.dart';
 
 import 'dart_spawner_tools.dart';
 
-typedef _Logger = void Function(String type, dynamic message);
+typedef DartProjectLogger = void Function(String type, dynamic message);
 
 /// Class to resolve a Dart project directory.
 class DartProject {
   /// The target project directory (that contains a `pubspec.yaml` file).
   final Directory? _directory;
-  final _Logger _logger;
+  final DartProjectLogger _logger;
 
   DartProject(
-      {Directory? directory, _Logger? logger, bool logToConsole = false})
+      {Directory? directory,
+      DartProjectLogger? logger,
+      bool logToConsole = false})
       : _directory = directory,
         _logger = logger ??
             (logToConsole ? ((t, m) => print('[$t] $m')) : ((t, m) {}));
@@ -653,7 +655,7 @@ class DartSpawner extends DartProject {
   /// - [startupTimeout] the timeout to identify the [Isolate] startup.
   DartSpawner(
       {Directory? directory,
-      _Logger? logger,
+      DartProjectLogger? logger,
       bool logToConsole = false,
       Duration? startupTimeout})
       : startupTimeout = defaultStartupTimeout,
@@ -693,7 +695,7 @@ class DartSpawner extends DartProject {
   /// The spawned type.
   String? spawnedType;
 
-  static final RegExp filePathReservedChars = RegExp(r'[\r\n\|\?\*\":<>]');
+  static final RegExp filePathReservedChars = RegExp(r'[\r\n|?*":<>]');
 
   /// Returns `true` if [dartEntryPoint] is a [String] and a [File] path with a '.dart' extension.
   bool isDartFilePath(dynamic dartEntryPoint) {

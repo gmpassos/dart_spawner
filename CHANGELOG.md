@@ -1,3 +1,16 @@
+## 1.1.0
+
+- Dart CI: update and optimize jobs.
+- sdk: '>=3.0.0 <4.0.0'
+
+- path: ^1.8.3
+- yaml: ^3.1.2
+- async_extension: ^1.2.4
+- lints: ^2.1.1
+- test: ^1.24.6
+- dependency_validator: ^3.2.2
+- coverage: ^1.6.3
+
 ## 1.0.6
 
 - Added environment variable:
