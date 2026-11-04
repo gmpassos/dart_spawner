@@ -652,8 +652,9 @@ void main(List<String> args) async {
         }
         try {
           expect((await Service.getInfo()).serverUri, isNotNull);
-          var busyMillis =
-              DartSpawner.defaultIsolateCheckPingTimeout.inMilliseconds * 2;
+          // Twice the default `isolateCheckPingTimeout` (2s). Fixed, as
+          // `DART_SPAWNER_DEBUG` raises the default to 1h.
+          const busyMillis = 4000;
           var spawner = DartSpawner();
           var busy =
               'var sw = Stopwatch()..start(); '
