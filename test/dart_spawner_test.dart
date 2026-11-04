@@ -10,14 +10,18 @@ void main() {
     setUp(() {});
 
     test('package File/Directory', () async {
-      expect((await Isolate.current.packageFile('test/hello_world.dart')).path,
-          endsWith('hello_world.dart'));
+      expect(
+        (await Isolate.current.packageFile('test/hello_world.dart')).path,
+        endsWith('hello_world.dart'),
+      );
 
       var testDir = await Isolate.current.packageDirectory('test');
       expect(testDir.path, endsWith('test'));
 
-      expect(testDir.subFile('hello_world.dart').path,
-          endsWith('hello_world.dart'));
+      expect(
+        testDir.subFile('hello_world.dart').path,
+        endsWith('hello_world.dart'),
+      );
     });
   });
 
@@ -31,23 +35,31 @@ void main() {
 
       expect(await dartProject.projectPackageName, equals('dart_spawner'));
 
-      expect((await dartProject.projectPackageConfigUri).toString(),
-          matches(RegExp(r'/(?:\.packages|package_config.json)$')));
-
-      expect((await dartProject.getProjectDependencyVersion('async_extension')),
-          isNotEmpty);
+      expect(
+        (await dartProject.projectPackageConfigUri).toString(),
+        matches(RegExp(r'/(?:\.packages|package_config.json)$')),
+      );
 
       expect(
-          (await dartProject
-              .getProjectDependencyVersion('__fake_package_name__')),
-          isNull);
+        (await dartProject.getProjectDependencyVersion('async_extension')),
+        isNotEmpty,
+      );
+
+      expect(
+        (await dartProject.getProjectDependencyVersion(
+          '__fake_package_name__',
+        )),
+        isNull,
+      );
     });
 
     test('executablePath', () async {
       var dartProject = DartProject();
 
-      expect((await dartProject.executablePath('dart')).toString(),
-          matches(RegExp(r'dart(?:\.\w+)?$')));
+      expect(
+        (await dartProject.executablePath('dart')).toString(),
+        matches(RegExp(r'dart(?:\.\w+)?$')),
+      );
     });
   });
 
@@ -75,11 +87,11 @@ void main() {
       var file = await spawner.projectSubFile('test/hello_world.dart');
       print('Spawning File: $file');
 
-      var spawned = await spawner.spawnDart(
-        file,
-        ['a', 'b', 'c'],
-        debugName: 'hello-world',
-      );
+      var spawned = await spawner.spawnDart(file, [
+        'a',
+        'b',
+        'c',
+      ], debugName: 'hello-world');
 
       print('Spawned: $spawned');
       expect(spawned, isNotNull);
@@ -103,11 +115,9 @@ void main() {
       var file = await spawner.projectSubFile('test/hello_world.dart');
       print('Spawning File: $file');
 
-      var spawned = await spawner.spawnDart(
-        file,
-        ['with_stop'],
-        debugName: 'hello-world + stop()',
-      );
+      var spawned = await spawner.spawnDart(file, [
+        'with_stop',
+      ], debugName: 'hello-world + stop()');
 
       print('Spawned: $spawned');
       expect(spawned, isNotNull);
@@ -138,11 +148,11 @@ void main(List<String> args) {
 ''';
       print('Spawning Script: <<<\n$script\n>>>');
 
-      var spawned = await spawner.spawnDart(
-        script,
-        ['A', 'B', 'C'],
-        debugName: 'script',
-      );
+      var spawned = await spawner.spawnDart(script, [
+        'A',
+        'B',
+        'C',
+      ], debugName: 'script');
 
       print('Spawned: $spawned');
       expect(spawned, isNotNull);
@@ -155,7 +165,8 @@ void main(List<String> args) {
     test('managed script', () async {
       var spawner = DartSpawner(logToConsole: true);
 
-      var script = '''
+      var script =
+          '''
 import 'package:dart_spawner/dart_spawner.dart';
 
 void main(List<String> args, dynamic parentPort) {
@@ -189,8 +200,9 @@ void main(List<String> args, dynamic parentPort) {
 
       expect(testDir.existsSync(), isTrue);
 
-      var testProjectDir =
-          Directory(pack_path.join(testDir.path, 'test_project'));
+      var testProjectDir = Directory(
+        pack_path.join(testDir.path, 'test_project'),
+      );
 
       var spawner = DartSpawner(directory: testProjectDir, logToConsole: true);
       print(spawner);
@@ -198,15 +210,18 @@ void main(List<String> args, dynamic parentPort) {
       expect(spawner.isFinished, isFalse);
 
       expect(
-          await spawner.cleanDartPubGetGeneratedFiles(
-              confirmProjectName: 'test_project'),
-          isTrue);
+        await spawner.cleanDartPubGetGeneratedFiles(
+          confirmProjectName: 'test_project',
+        ),
+        isTrue,
+      );
 
       var fileTxt = await spawner.projectSubFile('bin/test_project.dart.txt');
       expect(fileTxt.existsSync(), isTrue);
 
-      var fileDart =
-          File(pack_path.join(fileTxt.parent.path, 'test_project.dart'));
+      var fileDart = File(
+        pack_path.join(fileTxt.parent.path, 'test_project.dart'),
+      );
       fileTxt.copySync(fileDart.path);
 
       expect(fileDart.existsSync(), isTrue);
@@ -216,11 +231,11 @@ void main(List<String> args, dynamic parentPort) {
 
       print('Spawning File: $file');
 
-      var spawned = await spawner.spawnDart(
-        file,
-        ['Test Title', 'English', '11.99'],
-        debugName: 'test_project',
-      );
+      var spawned = await spawner.spawnDart(file, [
+        'Test Title',
+        'English',
+        '11.99',
+      ], debugName: 'test_project');
 
       print('Spawned: $spawned');
       expect(spawned, isNotNull);
@@ -246,7 +261,10 @@ void main(List<String> args, dynamic parentPort) {
         spawner,
         enableVMService: true,
         vmServicePort: await DartProject.getFreeListenPort(
-            startPort: 8171, endPort: 8191, skipPort: [8181]),
+          startPort: 8171,
+          endPort: 8191,
+          skipPort: [8181],
+        ),
       );
 
       await testRunDartVM(
@@ -254,38 +272,48 @@ void main(List<String> args, dynamic parentPort) {
         enableVMService: true,
         vmServiceAddress: '0.0.0.0',
         vmServicePort: await DartProject.getFreeListenPort(
-            startPort: 8191, endPort: 8171, skipPort: [8181]),
+          startPort: 8191,
+          endPort: 8171,
+          skipPort: [8181],
+        ),
       );
 
       fileDart.deleteSync();
 
       expect(
-          await spawner.cleanDartPubGetGeneratedFiles(
-              confirmProjectName: 'test_project'),
-          isTrue);
+        await spawner.cleanDartPubGetGeneratedFiles(
+          confirmProjectName: 'test_project',
+        ),
+        isTrue,
+      );
     });
   });
 }
 
-Future<void> testRunDartVM(DartSpawner spawner,
-    {bool enableVMService = false,
-    String? vmServiceAddress,
-    int? vmServicePort,
-    bool redirectOutput = true,
-    bool catchOutput = true}) async {
+Future<void> testRunDartVM(
+  DartSpawner spawner, {
+  bool enableVMService = false,
+  String? vmServiceAddress,
+  int? vmServicePort,
+  bool redirectOutput = true,
+  bool catchOutput = true,
+}) async {
   print(
-      'Run Dart VM> enableVMService: $enableVMService ; vmServiceAddress: $vmServiceAddress ; vmServicePort: $vmServicePort');
+    'Run Dart VM> enableVMService: $enableVMService ; vmServiceAddress: $vmServiceAddress ; vmServicePort: $vmServicePort',
+  );
 
   var processInfo = await spawner.runDartVM(
-      'bin/test_project.dart', ['Test Title2', 'English', '22.99'],
-      enableVMService: enableVMService,
-      vmServiceAddress: vmServiceAddress,
-      vmServicePort: vmServicePort,
-      redirectOutput: redirectOutput,
-      catchOutput: catchOutput,
-      handleSignals: true,
-      workingDirectory: (await spawner.projectDirectory).path,
-      stdoutFilter: (o) => _filterOutputObservatoryListening(o));
+    'bin/test_project.dart',
+    ['Test Title2', 'English', '22.99'],
+    enableVMService: enableVMService,
+    vmServiceAddress: vmServiceAddress,
+    vmServicePort: vmServicePort,
+    redirectOutput: redirectOutput,
+    catchOutput: catchOutput,
+    handleSignals: true,
+    workingDirectory: (await spawner.projectDirectory).path,
+    stdoutFilter: (o) => _filterOutputObservatoryListening(o),
+  );
 
   await processInfo.exitCode;
 
@@ -296,8 +324,10 @@ Future<void> testRunDartVM(DartSpawner spawner,
 
     if (vmServiceAddress != null) {
       vmServicePort ??= 8181;
-      expect(processInfo.args[0],
-          equals('--enable-vm-service=$vmServicePort/$vmServiceAddress'));
+      expect(
+        processInfo.args[0],
+        equals('--enable-vm-service=$vmServicePort/$vmServiceAddress'),
+      );
     } else if (vmServicePort != null) {
       expect(processInfo.args[0], equals('--enable-vm-service=$vmServicePort'));
     } else {
@@ -317,7 +347,9 @@ Future<void> testRunDartVM(DartSpawner spawner,
     print('<<$output>>');
 
     expect(
-        processInfo.output, allOf(contains('Test Title2'), contains('22.99')));
+      processInfo.output,
+      allOf(contains('Test Title2'), contains('22.99')),
+    );
 
     expect(processInfo.errorOutput.trim(), equals('XML Finished: Test Title2'));
   }

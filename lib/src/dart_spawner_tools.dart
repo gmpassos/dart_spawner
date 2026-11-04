@@ -15,7 +15,8 @@ bool isFileInDirectory(Directory parentDir, File file) {
 void deleteFile(Directory directoryScope, File file, {bool verbose = false}) {
   if (!isFileInDirectory(directoryScope, file)) {
     throw StateError(
-        "File out of directory scope! directoryScope: $directoryScope ; file: $file");
+      "File out of directory scope! directoryScope: $directoryScope ; file: $file",
+    );
   }
 
   if (FileSystemEntity.isDirectorySync(file.path)) {
@@ -38,8 +39,12 @@ void deleteFile(Directory directoryScope, File file, {bool verbose = false}) {
   }
 }
 
-void deleteDirectory(Directory directoryScope, Directory dir,
-    {bool recursive = false, bool verbose = false}) {
+void deleteDirectory(
+  Directory directoryScope,
+  Directory dir, {
+  bool recursive = false,
+  bool verbose = false,
+}) {
   var files = dir.listSync(recursive: recursive, followLinks: false);
 
   for (var f in files) {
