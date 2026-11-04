@@ -1,3 +1,7 @@
+## 1.2.2
+
+- async_extension: ^1.2.24
+
 ## 1.2.1
 
 - `DartSpawner`:
