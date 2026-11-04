@@ -639,6 +639,95 @@ void main(List<String> args) async {
       }
     });
 
+    // With the VM service enabled (always the case under `--coverage`), a
+    // script that blocks its event loop for longer than
+    // `isolateCheckPingTimeout` must not be reported as exited (1.2.x took a
+    // ping timeout as an exit and completed `exitCode` with 0).
+    for (var managed in [false, true]) {
+      test('VM service: a busy ${managed ? 'managed ' : ''}script is not '
+          'reported as exited', () async {
+        var wasEnabled = (await Service.getInfo()).serverUri != null;
+        if (!wasEnabled) {
+          await Service.controlWebServer(enable: true);
+        }
+        try {
+          expect((await Service.getInfo()).serverUri, isNotNull);
+          // Twice the default `isolateCheckPingTimeout` (2s). Fixed, as
+          // `DART_SPAWNER_DEBUG` raises the default to 1h.
+          const busyMillis = 4000;
+          var spawner = DartSpawner();
+          var busy =
+              'var sw = Stopwatch()..start(); '
+              'while (sw.elapsedMilliseconds < $busyMillis) {} '
+              "File(args[0]).writeAsStringSync('done');";
+          var spawned = await spawner
+              .spawnDart(
+                managed
+                    ? '''
+import 'dart:io';
+
+import 'package:dart_spawner/dart_spawner.dart';
+
+void main(List<String> args, dynamic parentPort) {
+  spawnedMain(args, parentPort, ${spawner.id}, () async {
+    await Future.delayed(Duration(milliseconds: 50));
+    $busy
+  });
+}
+'''
+                    : '''
+import 'dart:io';
+
+void main(List<String> args) {
+  $busy
+}
+''',
+                [resultPath()],
+                usesSpawnedMain: managed,
+              )
+              .timeout(_spawnTimeout);
+
+          var code = await spawned.exitCode.timeout(_spawnTimeout);
+          // The script had finished when the exit was reported:
+          expect(File(resultPath()).existsSync(), isTrue);
+          expect(code, equals(0));
+          expect(spawner.uncaughtError, isNull);
+        } finally {
+          if (!wasEnabled) {
+            await Service.controlWebServer(enable: false);
+          }
+        }
+      });
+    }
+
+    test('stop() while the VM service is enabled', () async {
+      var wasEnabled = (await Service.getInfo()).serverUri != null;
+      if (!wasEnabled) {
+        await Service.controlWebServer(enable: true);
+      }
+      try {
+        var spawner = DartSpawner();
+        var spawned = await spawner
+            .spawnDart(r'''
+void main() async {
+  await Future.delayed(Duration(seconds: 30));
+}
+''', [])
+            .timeout(_spawnTimeout);
+        // Let a few VM service checks run:
+        await Future.delayed(Duration(milliseconds: 1500));
+        expect(spawned.isFinished, isFalse);
+        expect(await spawned.stop(7), isTrue);
+        expect(await spawned.exitCode, equals(7));
+        // Concurrent/late stops are no-ops:
+        expect(await spawned.stop(8), isFalse);
+      } finally {
+        if (!wasEnabled) {
+          await Service.controlWebServer(enable: false);
+        }
+      }
+    });
+
     test('without enableObservatory', () async {
       var spawned = await DartSpawner()
           .spawnDart(_writerScript, [resultPath()])

@@ -185,10 +185,54 @@ void main() {
       expect(outLines.every((l) => l == 'y' * 1023), isTrue);
     });
 
-    // Known behaviour (documented at `runProcess`): without `catchOutput` or
-    // `redirectOutput`, `runProcess` does not consume the child's
-    // stdout/stderr. A child that writes more than the OS pipe buffer blocks
-    // until the caller drains `ProcessInfo.process.stdout`.
+    test('a lot of output with drainOutput', () async {
+      var project = DartProject();
+      const lines = 1024; // 1 MiB, well above any OS pipe buffer
+      var info = await project.runProcess(
+        Platform.resolvedExecutable,
+        runnerArgs(['chatty', '$lines']),
+        resolveCommandPath: false,
+        drainOutput: true,
+      );
+      try {
+        expect(await info.exitCode.timeout(Duration(seconds: 60)), equals(0));
+        // Discarded:
+        expect(info.output, isEmpty);
+        expect(info.errorOutput, isEmpty);
+      } finally {
+        info.process.kill(ProcessSignal.sigkill);
+      }
+
+      // Also through `runDartVM`:
+      var info2 = await project.runDartVM(runnerPath, [
+        'chatty',
+        '$lines',
+      ], drainOutput: true);
+      try {
+        expect(await info2.exitCode.timeout(Duration(seconds: 60)), equals(0));
+        expect(info2.output, isEmpty);
+      } finally {
+        info2.process.kill(ProcessSignal.sigkill);
+      }
+
+      // Redundant with `catchOutput` (which already consumes the output):
+      var info3 = await project.runProcess(
+        Platform.resolvedExecutable,
+        runnerArgs(['chatty', '1']),
+        resolveCommandPath: false,
+        catchOutput: true,
+        drainOutput: true,
+      );
+      expect(await info3.exitCode.timeout(Duration(seconds: 60)), equals(0));
+      expect(info3.output.length, equals(1024));
+      expect(info3.errorOutput, equals('chatty done\n'));
+    });
+
+    // Default behaviour (documented at `runProcess`): without `catchOutput`,
+    // `redirectOutput` or `drainOutput`, `runProcess` does not consume the
+    // child's stdout/stderr (the caller may read them). A child that writes
+    // more than the OS pipe buffer blocks until the caller drains
+    // `ProcessInfo.process.stdout`.
     test('a lot of output without catchOutput/redirectOutput', () async {
       var project = DartProject();
       const lines = 1024; // 1 MiB, well above any OS pipe buffer
@@ -284,6 +328,94 @@ void main() {
       }
       expect(await info3.exitCode.timeout(Duration(seconds: 30)), isNot(0));
     });
+  });
+
+  group('spawn in a separate VM', () {
+    late Directory tempDir;
+
+    setUp(() {
+      tempDir = Directory.systemTemp
+          .createTempSync('dart_spawner_process_')
+          .absolute;
+    });
+
+    tearDown(() {
+      if (tempDir.existsSync()) {
+        tempDir.deleteSync(recursive: true);
+      }
+    });
+
+    File writeScript(String relativePath, String source) {
+      var file = File(pack_path.join(tempDir.path, relativePath));
+      file.parent.createSync(recursive: true);
+      return file..writeAsStringSync(source);
+    }
+
+    const writerScript = r'''
+import 'dart:io';
+
+void main(List<String> args) {
+  File(args[0]).writeAsStringSync('args:${args.skip(1).join(',')}');
+}
+''';
+
+    // `Isolate.spawnUri` resolves a relative `Uri` against the runner's
+    // script (`test/fixtures/spawner_runner.dart`), not the working
+    // directory.
+    for (var uri in ['bin/writer.dart', './bin/writer.dart']) {
+      test('spawnDartURI: relative Uri `$uri` from another cwd', () async {
+        writeScript(pack_path.join('bin', 'writer.dart'), writerScript);
+        var resultFile = File(pack_path.join(tempDir.path, 'result.txt'));
+
+        var result = await Process.run(
+          Platform.resolvedExecutable,
+          runnerArgs(['spawn-relative-uri', uri, resultFile.path, 'rel']),
+          workingDirectory: tempDir.path,
+        ).timeout(Duration(seconds: 60));
+
+        expect(
+          result.exitCode,
+          equals(0),
+          reason: '${result.stdout}\n${result.stderr}',
+        );
+        expect('${result.stdout}', contains('EXIT:0'));
+        expect(resultFile.readAsStringSync(), equals('args:rel'));
+      });
+    }
+
+    for (var pauseOnExit in [false, true]) {
+      // With `--pause-isolates-on-exit`, `onExit` is only sent when the
+      // isolate is resumed: the exit is detected through the VM service
+      // (`PauseExit`).
+      test('VM service${pauseOnExit ? ' with --pause-isolates-on-exit' : ''}: '
+          'a busy script is not reported as exited', () async {
+        var script = writeScript('busy.dart', r'''
+import 'dart:io';
+
+void main(List<String> args) {
+  // Blocks the event loop for longer than `isolateCheckPingTimeout`.
+  var sw = Stopwatch()..start();
+  while (sw.elapsed < Duration(seconds: 4)) {}
+  File(args[0]).writeAsStringSync('done');
+}
+''');
+        var resultFile = File(pack_path.join(tempDir.path, 'result.txt'));
+
+        var result = await Process.run(Platform.resolvedExecutable, [
+          '--enable-vm-service=0',
+          if (pauseOnExit) '--pause-isolates-on-exit',
+          ...runnerArgs(['spawn-wait-exit', script.path, resultFile.path]),
+        ]).timeout(Duration(seconds: 60));
+
+        var reason = '${result.stdout}\n${result.stderr}';
+        expect(result.exitCode, equals(0), reason: reason);
+        var lines = LineSplitter.split('${result.stdout}').toList();
+        expect(lines, contains('VM_SERVICE:true'), reason: reason);
+        // Not reported as exited while the script was still running:
+        expect(lines, contains('RESULT_AT_EXIT:true'), reason: reason);
+        expect(lines, contains('EXIT:0'), reason: reason);
+      });
+    }
   });
 
   group('signals', skip: Platform.isWindows ? 'POSIX signals' : null, () {

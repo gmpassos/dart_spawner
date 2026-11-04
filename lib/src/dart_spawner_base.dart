@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:developer';
 import 'dart:io';
 import 'dart:isolate';
@@ -267,6 +268,10 @@ class DartProject {
   /// - If [catchOutput] is `true` catches the [Process] outputs to [ProcessInfo.outputBuffer] and [ProcessInfo.errorOutputBuffer].
   /// - [stdoutFilter] is a filter for the [Process] `stdout`. Useful to remove sensitive data.
   /// - [stderrFilter] is a filter for the [Process] `stderr`. Useful to remove sensitive data.
+  /// - If [drainOutput] is `true` the [Process] outputs are consumed and discarded.
+  ///
+  /// See [runProcess] (the output must be consumed by one of [redirectOutput],
+  /// [catchOutput] and [drainOutput], or by the caller).
   Future<ProcessInfo> runDartVM(
     String entrypoint,
     List<String> args, {
@@ -280,6 +285,7 @@ class DartProject {
     bool handleSignals = false,
     bool redirectOutput = false,
     bool catchOutput = false,
+    bool drainOutput = false,
     String Function(String o)? stdoutFilter,
     String Function(String o)? stderrFilter,
     void Function(ProcessSignal signal)? onSignal,
@@ -337,6 +343,7 @@ class DartProject {
       handleSignals: handleSignals,
       redirectOutput: redirectOutput,
       catchOutput: catchOutput,
+      drainOutput: drainOutput,
       stdoutFilter: stdoutFilter,
       stderrFilter: stderrFilter,
       onSignal: onSignal,
@@ -426,11 +433,16 @@ class DartProject {
   /// - If [catchOutput] is `true` catches the [Process] outputs to [ProcessInfo.outputBuffer] and [ProcessInfo.errorOutputBuffer].
   /// - [stdoutFilter] is a filter for the [Process] `stdout`. Useful to remove sensitive data.
   /// - [stderrFilter] is a filter for the [Process] `stderr`. Useful to remove sensitive data.
+  /// - If [drainOutput] is `true` the [Process] outputs are consumed and
+  ///   discarded (when not already consumed by [redirectOutput] or
+  ///   [catchOutput]).
   ///
-  /// If neither [redirectOutput] nor [catchOutput] is `true`, the [Process]
-  /// `stdout` and `stderr` are not consumed: the caller must drain
-  /// [ProcessInfo.process] `stdout`/`stderr`, otherwise a process that writes
-  /// more than the OS pipe buffer blocks and never exits.
+  /// If none of [redirectOutput], [catchOutput] and [drainOutput] is `true`,
+  /// the [Process] `stdout` and `stderr` are not consumed (so the caller can
+  /// read [ProcessInfo.process] `stdout`/`stderr` itself): the caller must
+  /// drain them, otherwise a process that writes more than the OS pipe buffer
+  /// blocks and never exits. Pass `drainOutput: true` when the output is not
+  /// needed.
   Future<ProcessInfo> runProcess(
     String commandName,
     List<String> args, {
@@ -439,6 +451,7 @@ class DartProject {
     bool handleSignals = false,
     bool redirectOutput = false,
     bool catchOutput = false,
+    bool drainOutput = false,
     String Function(String o)? stdoutFilter,
     String Function(String o)? stderrFilter,
     void Function(ProcessSignal signal)? onSignal,
@@ -502,6 +515,9 @@ class DartProject {
           if (catchOutput) processInfo.errorOutputBuffer.add(o);
         }),
       );
+    } else if (drainOutput) {
+      processInfo._outputDone.add(process.stdout.drain<void>());
+      processInfo._outputDone.add(process.stderr.drain<void>());
     }
 
     process.exitCode.then((_) {
@@ -625,12 +641,14 @@ class ProcessInfo {
   int? _exitCode;
 
   /// Completes when the `stdout`/`stderr` consumers set by
-  /// [DartProject.runProcess] (`catchOutput`/`redirectOutput`) are done.
+  /// [DartProject.runProcess] (`catchOutput`/`redirectOutput`/`drainOutput`)
+  /// are done.
   final List<Future<void>> _outputDone = [];
 
   /// The [Process.exitCode] of [process].
   ///
-  /// When the output is caught or redirected (see [DartProject.runProcess]),
+  /// When the output is caught, redirected or drained (see
+  /// [DartProject.runProcess]),
   /// it also waits (up to 5s after the exit, in case another process keeps
   /// the pipes open) for the output to be consumed, so [output] and
   /// [errorOutput] are complete.
@@ -725,7 +743,7 @@ class DartSpawner extends DartProject {
         45,
   );
 
-  /// The default [Isolate] check ping timeout.
+  /// The default [Isolate] check timeout (see [isolateCheckPingTimeout]).
   ///
   /// - Set by environment variable: "DART_SPAWNER_ISOLATE_CHECK_PING_TIMEOUT" (in seconds).
   /// - When on [debugMode] is set to 3600 sec.
@@ -745,7 +763,18 @@ class DartSpawner extends DartProject {
   /// The timeout to identify the [Isolate] startup.
   final Duration startupTimeout;
 
-  /// The timeout of a [Isolate] check (calling [Isolate.ping]).
+  /// The timeout of an [Isolate] check.
+  ///
+  /// The exit of a spawned isolate is detected by its `onExit`/`onError`
+  /// ports. When the VM service is enabled, the spawned isolate is also
+  /// checked periodically, through the VM service `getIsolate` RPC, for a
+  /// pause at exit (`--pause-isolates-on-exit`), which delays the `onExit`
+  /// message until the isolate is resumed. This is the timeout of that
+  /// request: a request that times out (for example, under load) is not
+  /// taken as an exit, the check is just retried later.
+  ///
+  /// (Until 1.2.x it was the timeout of an [Isolate.ping], and a ping timeout
+  /// was taken as an exit.)
   final Duration isolateCheckPingTimeout;
 
   /// Constructs a new [DartSpawner].
@@ -960,7 +989,38 @@ class DartSpawner extends DartProject {
     usesSpawnedMain: usesSpawnedMain,
   );
 
+  /// Resolves a relative file [uri] (a relative path without a scheme, as
+  /// `Uri.file('bin/main.dart')` and `Uri.parse('bin/main.dart')` return)
+  /// against the current working directory ([Directory.current]).
+  ///
+  /// `Isolate.spawnUri` resolves a relative [Uri] against the current
+  /// isolate's script URI, not the working directory, which is rarely what
+  /// is meant by a relative file path.
+  ///
+  /// Any other [uri] is returned unchanged: URIs with a scheme (`file:`,
+  /// `package:`, `http:`, `https:`, `data:`, ...), with an authority, or with
+  /// an absolute path. (Note that Dart always normalizes the path of a
+  /// `file:` URI to an absolute one: `Uri.parse('file:bin/main.dart')` is
+  /// `file:///bin/main.dart`.)
+  static Uri resolveRelativeFileUri(Uri uri) {
+    if (uri.hasScheme ||
+        uri.hasAuthority ||
+        uri.hasAbsolutePath ||
+        uri.path.isEmpty) {
+      return uri;
+    }
+
+    // On Windows `Directory.current.uri` is `file:///C:/...`, and a relative
+    // `Uri.file(r'bin\main.dart', windows: true)` has the path `bin/main.dart`.
+    return Directory.current.uri.resolveUri(uri);
+  }
+
   /// Spawn a Dart [Uri].
+  ///
+  /// A relative file [dartUri] (relative path, no scheme) is resolved against
+  /// the current working directory (see [resolveRelativeFileUri]).
+  /// `file:`, `package:`, `http(s):`, `data:` and absolute URIs are used as
+  /// they are.
   Future<SpawnedIsolate> spawnDartURI(
     Uri dartUri,
     List<String> args, {
@@ -971,7 +1031,7 @@ class DartSpawner extends DartProject {
   }) => _spawnDart(
     dartUri,
     'Uri',
-    dartUri,
+    resolveRelativeFileUri(dartUri),
     args,
     debugName: debugName,
     enableObservatory: enableObservatory,
@@ -1394,14 +1454,27 @@ class SpawnedIsolate {
   /// Returns `true` if the spawned Dart script/file have finished.
   bool get isFinished => _isolateCompleter.isCompleted;
 
+  bool _stopping = false;
+
   /// Stops the process.
+  ///
+  /// Completes [exitCode] with [exitCode] and returns `true`, or returns
+  /// `false` if the isolate had already finished (or another [stop] is in
+  /// progress).
   Future<bool> stop(int exitCode, {String? reason}) async {
-    if (_isolateCompleter.isCompleted) {
+    if (_isolateCompleter.isCompleted || _stopping) {
       await _cancelSignalListeners();
       return false;
     }
 
+    _stopping = true;
+
     await _cancelSignalListeners();
+
+    // The isolate may have exited while the listeners were cancelled.
+    if (_isolateCompleter.isCompleted) {
+      return false;
+    }
 
     final onStop = _onStop;
     if (onStop != null) {
@@ -1437,18 +1510,37 @@ class SpawnedIsolate {
 
   int _checkIsolateCount = 0;
 
+  /// The exit of the isolate is reported by its `onExit`/`onError` ports
+  /// (see [DartSpawner]). This check only covers the case those ports can't:
+  /// with the VM service enabled, an isolate paused at exit
+  /// (`--pause-isolates-on-exit`, used by debuggers and coverage tools) does
+  /// not send its `onExit` message until it is resumed.
+  ///
+  /// The pause state is read from the VM service (`getIsolate`): only a
+  /// `PauseExit` pause event is an exit. A busy isolate, a slow VM service
+  /// or a failed/timed out request never complete [exitCode].
   void _checkIsolate() async {
     if (isFinished) return;
 
     ++_checkIsolateCount;
 
-    var vmServiceEnabled = await _isVMServiceEnabled();
-    if (!vmServiceEnabled) return;
+    var serverUri = await _vmServiceServerUri();
+    if (serverUri == null) return;
 
-    var paused = await _isIsolatePaused(isolate, _isolateCheckPingTimeout);
+    if (isFinished) return;
 
-    if (paused) {
-      if (!_isolateCompleter.isCompleted) {
+    var pauseKind = await _getIsolatePauseEventKind(
+      serverUri,
+      isolate,
+      _isolateCheckPingTimeout,
+    );
+
+    if (pauseKind == 'PauseExit') {
+      // Give an `onError` message (sent before the exit) a chance to be
+      // delivered first, to report `uncaughtErrorExitCode`.
+      await Future.delayed(Duration(milliseconds: 100));
+      // A `stop` in progress completes `exitCode` with the requested code.
+      if (!_stopping && !_isolateCompleter.isCompleted) {
         _isolateCompleter.complete(0);
       }
     } else {
@@ -1530,38 +1622,55 @@ Future<bool> _isIsolateSpawnUriSupported() async {
   return info.majorVersion != 0 || info.minorVersion != 0;
 }
 
-Future<bool> _isVMServiceEnabled() async {
+/// The VM service HTTP server [Uri] (including its auth token), or `null` if
+/// the VM service is not enabled.
+Future<Uri?> _vmServiceServerUri() async {
   var info = await Service.getInfo();
-  return info.serverUri != null;
+  return info.serverUri;
 }
 
-Future<bool> _isIsolatePaused(Isolate isolate, Duration pingTimeout) async {
-  var pauseCapability = isolate.pauseCapability;
+/// Returns the `kind` of the [isolate]'s current pause event, as reported by
+/// the VM service `getIsolate` RPC (`Resume`, `PauseStart`, `PauseExit`,
+/// `PauseBreakpoint`, ...), or `null` if it can't be read (VM service
+/// unavailable, request failed or timed out, or the isolate is already gone).
+///
+/// The VM service answers from its own thread, so the answer doesn't depend
+/// on the [isolate] being responsive (a busy event loop is still `Resume`).
+Future<String?> _getIsolatePauseEventKind(
+  Uri serverUri,
+  Isolate isolate,
+  Duration timeout,
+) async {
+  var isolateId = Service.getIsolateId(isolate);
+  if (isolateId == null) return null;
 
-  if (pauseCapability == null) {
-    return false;
+  var client = HttpClient()..connectionTimeout = timeout;
+  try {
+    return await () async {
+      var path = serverUri.path.endsWith('/')
+          ? '${serverUri.path}getIsolate'
+          : '${serverUri.path}/getIsolate';
+      var uri = serverUri.replace(
+        path: path,
+        queryParameters: {'isolateId': isolateId},
+      );
+      var request = await client.getUrl(uri);
+      var response = await request.close();
+      var body = await response.transform(utf8.decoder).join();
+      if (response.statusCode != 200) return null;
+
+      var json = jsonDecode(body);
+      if (json is! Map) return null;
+      var result = json['result'];
+      if (result is! Map || result['type'] != 'Isolate') return null;
+      var pauseEvent = result['pauseEvent'];
+      if (pauseEvent is! Map) return null;
+      var kind = pauseEvent['kind'];
+      return kind is String ? kind : null;
+    }().timeout(timeout);
+  } catch (_) {
+    return null;
+  } finally {
+    client.close(force: true);
   }
-
-  var completer = Completer<bool>();
-
-  var receivePort = RawReceivePort((pong) {
-    if (!completer.isCompleted) {
-      completer.complete(pong);
-    }
-  });
-
-  isolate.ping(
-    receivePort.sendPort,
-    response: true,
-    priority: Isolate.beforeNextEvent,
-  );
-
-  var pong = await completer.future.timeout(
-    pingTimeout,
-    onTimeout: () => false,
-  );
-
-  receivePort.close();
-
-  return !pong;
 }

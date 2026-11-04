@@ -1,3 +1,41 @@
+## 1.3.0
+
+- `DartSpawner`:
+  - `spawnDartURI` (and `spawnDart` with a `Uri`): a relative file `Uri`
+    (no scheme, e.g. `Uri.file('bin/main.dart')` or
+    `Uri.parse('bin/main.dart')`) is now resolved against the working
+    directory. `Isolate.spawnUri` resolved it against the current isolate's
+    script URI. `file:`, `package:`, `http(s):`, `data:` and absolute URIs are
+    used as they are.
+  - Added `resolveRelativeFileUri`.
+- `SpawnedIsolate`:
+  - Fix the exit detection with the VM service enabled (always the case
+    under `dart test --coverage`): an isolate that didn't answer an
+    `Isolate.ping` within `isolateCheckPingTimeout` (2s), for example a
+    script blocking its event loop or a loaded machine, was taken as exited
+    and `exitCode` completed with `0` while it was still running.
+    - The `onExit`/`onError` isolate ports are the source of truth for the
+      exit.
+    - An isolate paused at exit (`--pause-isolates-on-exit`, which delays
+      `onExit`) is now detected through the VM service `getIsolate` RPC
+      (a `PauseExit` pause event). A failed or timed out request is never
+      taken as an exit.
+    - `isolateCheckPingTimeout` is now the timeout of that request.
+  - `stop`: returns `false` (without stopping again) when another `stop` is
+    in progress, or when the isolate exits while it's starting.
+- `DartProject`:
+  - `runProcess`/`runDartVM`: added `drainOutput` (default `false`), to
+    consume and discard the process `stdout`/`stderr`. Without
+    `catchOutput`, `redirectOutput` or `drainOutput` the output is still not
+    consumed (the caller may read it), and a process that writes more than
+    the OS pipe buffer blocks.
+- Tests:
+  - Relative `Uri` spawned from another working directory.
+  - A script blocking its event loop for longer than
+    `isolateCheckPingTimeout` with the VM service enabled (with and without
+    `--pause-isolates-on-exit`, plain and managed): not reported as exited.
+  - `drainOutput` with a 1 MiB child output.
+
 ## 1.2.2
 
 - async_extension: ^1.2.24

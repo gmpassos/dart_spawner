@@ -7,6 +7,7 @@ library;
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer';
 import 'dart:io';
 
 import 'package:dart_spawner/dart_spawner.dart';
@@ -60,6 +61,32 @@ void main() async {
 ''', []);
       print('READY');
       var code = await spawned.exitCode;
+      print('EXIT:$code');
+      exit(0);
+    case 'spawn-relative-uri':
+      // Spawns the relative `<uri>` (resolved against the working directory
+      // set by the test), passing the remaining arguments to it.
+      var spawner = DartSpawner();
+      var spawned = await spawner.spawnDartURI(
+        Uri.parse(rest[0]),
+        rest.skip(1).toList(),
+      );
+      print('EXIT:${await spawned.exitCode}');
+      exit(0);
+    case 'spawn-wait-exit':
+      // Spawns the script `<file> <resultFile>` and reports its exit code,
+      // and whether `<resultFile>` (written by the script at its end)
+      // existed when the exit was reported. Used with
+      // `--enable-vm-service --pause-isolates-on-exit`, where the `onExit`
+      // message is only sent when the isolate is resumed.
+      var spawner = DartSpawner();
+      var resultFile = File(rest[1]);
+      var spawned = await spawner.spawnDartFile(File(rest[0]), [
+        resultFile.path,
+      ]);
+      print('VM_SERVICE:${(await Service.getInfo()).serverUri != null}');
+      var code = await spawned.exitCode;
+      print('RESULT_AT_EXIT:${resultFile.existsSync()}');
       print('EXIT:$code');
       exit(0);
     case 'process-wait-signal':
