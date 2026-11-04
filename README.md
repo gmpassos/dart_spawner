@@ -118,6 +118,34 @@ if (await spawned.exitCode != 0) {
 }
 ```
 
+The exit is reported by the spawned isolate's `onExit`/`onError` ports. When
+the VM service is enabled and the isolate is paused at exit
+(`--pause-isolates-on-exit`, used by debuggers and coverage tools), the exit is
+detected through the VM service. A busy isolate is never reported as exited.
+
+## Relative paths and URIs
+
+A relative `File`, file path or file `Uri` (no scheme, like
+`Uri.file('bin/main.dart')`) is resolved against the current working directory.
+`package:`, `http(s):`, `data:` and absolute URIs are used as they are.
+
+## Running processes
+
+`DartProject.runProcess` and `runDartVM` don't consume the process output by
+default, so you can read `processInfo.process.stdout`/`stderr` yourself. If you
+don't need it, pass one of `catchOutput: true`, `redirectOutput: true` or
+`drainOutput: true`: a process whose output is never consumed blocks once it
+fills the OS pipe buffer.
+
+```dart
+var processInfo = await DartProject().runProcess(
+  'dart',
+  ['pub', 'get'],
+  drainOutput: true,
+);
+print('Exit code: ${await processInfo.exitCode}');
+```
+
 ## Dart VM
 
 Note that `DartSpawner` uses [Isolate.spawnUri][isolate_spawnUri]

@@ -416,6 +416,55 @@ dependencies:
       expect(spawner.isDartFilePath(File('a.dart')), isFalse);
     });
 
+    test('resolveRelativeFileUri', () {
+      var cwd = Directory.current.uri;
+      Uri resolve(Uri uri) => DartSpawner.resolveRelativeFileUri(uri);
+
+      // Relative file URIs (no scheme): against the working directory.
+      expect(
+        resolve(Uri.file('bin/x.dart')),
+        equals(cwd.resolve('bin/x.dart')),
+      );
+      expect(
+        resolve(Uri.parse('bin/x.dart')),
+        equals(cwd.resolve('bin/x.dart')),
+      );
+      expect(
+        resolve(Uri.parse('./bin/x.dart?q=1#f')),
+        equals(cwd.resolve('bin/x.dart?q=1#f')),
+      );
+      expect(
+        resolve(Uri.parse('../a%20b/x.dart')),
+        equals(cwd.resolve('../a%20b/x.dart')),
+      );
+      expect(resolve(Uri.parse('bin/x.dart')).scheme, equals('file'));
+      expect(
+        resolve(Uri.parse('bin/x.dart')).toFilePath(),
+        equals(pack_path.join(Directory.current.path, 'bin', 'x.dart')),
+      );
+      expect(
+        resolve(Uri.file(r'bin\x.dart', windows: true)),
+        equals(cwd.resolve('bin/x.dart')),
+      );
+
+      // Untouched:
+      for (var uri in [
+        Uri.parse('package:foo/foo.dart'),
+        Uri.parse('http://localhost/x.dart'),
+        Uri.parse('https://localhost/x.dart'),
+        Uri.parse('data:application/dart;charset=utf-8,void%20main()%7B%7D'),
+        Uri.parse('file:///abs/x.dart'),
+        // Dart normalizes it to `file:///bin/x.dart`:
+        Uri.parse('file:bin/x.dart'),
+        Uri.parse('/abs/x.dart'),
+        Uri.file(r'C:\abs\x.dart', windows: true),
+        Uri.parse('//host/x.dart'),
+        Uri(),
+      ]) {
+        expect(resolve(uri), same(uri), reason: '$uri');
+      }
+    });
+
     test('spawnDart: unsupported entry point', () {
       var spawner = DartSpawner(directory: tempDir);
       expect(() => spawner.spawnDart(123, []), throwsStateError);
