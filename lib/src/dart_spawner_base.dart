@@ -229,16 +229,23 @@ class DartProject {
   }
 
   /// Runs `dart pub get` in the [projectDirectory].
+  ///
+  /// Throws a [StateError] (including the `pub` output) if it fails.
   Future<bool> runDartPubGet() async {
     var workingDir = await projectDirectory;
-    var processInfo = await runProcess('dart', [
-      'pub',
-      'get',
-    ], workingDirectory: workingDir.path);
+    // `catchOutput` drains the process output: an undrained `pub get` that
+    // prints more than the OS pipe buffer would never exit.
+    var processInfo = await runProcess(
+      'dart',
+      ['pub', 'get'],
+      workingDirectory: workingDir.path,
+      catchOutput: true,
+    );
 
     var ok = await processInfo.checkExitCode();
     if (!ok) {
-      throw StateError('Error running: dart pub get > $processInfo');
+      var output = '${processInfo.output}\n${processInfo.errorOutput}'.trim();
+      throw StateError('Error running: dart pub get > $processInfo\n$output');
     }
 
     return ok;
@@ -419,6 +426,11 @@ class DartProject {
   /// - If [catchOutput] is `true` catches the [Process] outputs to [ProcessInfo.outputBuffer] and [ProcessInfo.errorOutputBuffer].
   /// - [stdoutFilter] is a filter for the [Process] `stdout`. Useful to remove sensitive data.
   /// - [stderrFilter] is a filter for the [Process] `stderr`. Useful to remove sensitive data.
+  ///
+  /// If neither [redirectOutput] nor [catchOutput] is `true`, the [Process]
+  /// `stdout` and `stderr` are not consumed: the caller must drain
+  /// [ProcessInfo.process] `stdout`/`stderr`, otherwise a process that writes
+  /// more than the OS pipe buffer blocks and never exits.
   Future<ProcessInfo> runProcess(
     String commandName,
     List<String> args, {
@@ -922,6 +934,9 @@ class DartSpawner extends DartProject {
   }
 
   /// Spawn a Dart [File].
+  ///
+  /// A relative [dartFile] path is resolved against the current working
+  /// directory (see [File.absolute]).
   Future<SpawnedIsolate> spawnDartFile(
     File dartFile,
     List<String> args, {
@@ -932,7 +947,9 @@ class DartSpawner extends DartProject {
   }) => _spawnDart(
     dartFile,
     'File',
-    dartFile.uri,
+    // A relative `File.uri` would be resolved by `Isolate.spawnUri` against
+    // the current isolate's script URI, not the working directory.
+    dartFile.absolute.uri,
     args,
     debugName: debugName,
     enableObservatory: enableObservatory,

@@ -1,3 +1,28 @@
+## 1.2.1
+
+- `DartSpawner`:
+  - `spawnDartFile` (and `spawnDart` with a `File` or a file path): fix
+    relative paths, which `Isolate.spawnUri` resolved against the current
+    isolate's script URI instead of the working directory. The file is now
+    resolved with `File.absolute`.
+- `DartProject`:
+  - `runDartPubGet`: drain the `pub get` output (an undrained process that
+    prints more than the OS pipe buffer never exits) and include it in the
+    `StateError` thrown on failure.
+  - `runProcess`: document that, without `catchOutput`/`redirectOutput`, the
+    caller must drain `ProcessInfo.process` `stdout`/`stderr`.
+- Tests:
+  - `spawnedMain` protocol tests in the test's own isolate group (so they are
+    visible to `dart test --coverage`, which only collects that group).
+  - Integration tests: arguments, a lot of output, self-terminated isolates,
+    concurrent spawns, the same file twice, relative/absolute paths, relative
+    project directory, `package:` URIs, stop right after spawn, observatory,
+    managed stop timeout and managed scripts exiting without `stopped`.
+  - A separate-VM runner (`test/fixtures/spawner_runner.dart`) for the
+    `DART_SPAWNER_*` environment variables, SIGINT/SIGTERM handling,
+    non-zero exit codes, argument passing and process output draining.
+  - `test/test_project`: Dart 3 SDK constraint (`^3.13.0`) and `xml: ^7.1.0`.
+
 ## 1.2.0
 
 - `DartSpawner`:

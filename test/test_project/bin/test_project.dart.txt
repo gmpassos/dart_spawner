@@ -26,9 +26,9 @@ void main(List<String> args) {
   var lang = title.getAttribute('lang')!;
   var price = book.getElement('price')!;
 
-  print('Book title: ${title.text}');
+  print('Book title: ${title.innerText}');
   print('Book language: $lang');
-  print('Book price: ${price.text}');
+  print('Book price: ${price.innerText}');
 
   stderr.writeln('XML Finished: $argTitle');
 }
