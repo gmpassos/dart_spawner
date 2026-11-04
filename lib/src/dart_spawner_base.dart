@@ -16,13 +16,13 @@ class DartProject {
   final Directory? _directory;
   final DartProjectLogger _logger;
 
-  DartProject(
-      {Directory? directory,
-      DartProjectLogger? logger,
-      bool logToConsole = false})
-      : _directory = directory,
-        _logger = logger ??
-            (logToConsole ? ((t, m) => print('[$t] $m')) : ((t, m) {}));
+  DartProject({
+    this._directory,
+    DartProjectLogger? logger,
+    bool logToConsole = false,
+  }) : _logger =
+           logger ??
+           (logToConsole ? ((t, m) => print('[$t] $m')) : ((t, m) {}));
 
   /// Logs a message.
   void log(String type, dynamic message) => _logger(type, message);
@@ -33,8 +33,9 @@ class DartProject {
   FutureOr<Directory> get projectDirectory {
     var projDir = _projectDirectory;
     if (projDir == null) {
-      if (_directory != null) {
-        _projectDirectory = projDir = _directory!.absolute;
+      final directory = _directory;
+      if (directory != null) {
+        _projectDirectory = projDir = directory.absolute;
         log('INFO', 'Resolved `projectDirectory`: $projDir');
         return projDir;
       } else {
@@ -77,7 +78,8 @@ class DartProject {
       return projectPubspecFile.resolveMapped((file) {
         if (!file.existsSync()) {
           throw StateError(
-              'Failed to locate `pubspec.yaml` in project directory `$projectDirectory`');
+            'Failed to locate `pubspec.yaml` in project directory `$projectDirectory`',
+          );
         }
 
         var content = file.readAsStringSync();
@@ -108,7 +110,8 @@ class DartProject {
       return projectPubspecLockFile.resolveMapped((lockFile) {
         if (!lockFile.existsSync()) {
           throw StateError(
-              'No `pubspec.lock` file in project directory `$projectDirectory`. Run `pub get`.');
+            'No `pubspec.lock` file in project directory `$projectDirectory`. Run `pub get`.',
+          );
         }
 
         final yaml = loadYaml(lockFile.readAsStringSync()) as YamlMap;
@@ -145,19 +148,23 @@ class DartProject {
     var uriPackageConfigJson = projectSubUri('.dart_tool/package_config.json');
     var uriPackages = projectSubUri('.packages');
 
-    var filePackageConfigJson =
-        uriPackageConfigJson.resolveMapped((uri) => File.fromUri(uri));
+    var filePackageConfigJson = uriPackageConfigJson.resolveMapped(
+      (uri) => File.fromUri(uri),
+    );
     var filePackages = uriPackages.resolveMapped((uri) => File.fromUri(uri));
 
-    return filePackageConfigJson.resolveBoth(filePackages,
-        (fileJson, filePack) {
+    return filePackageConfigJson.resolveBoth(filePackages, (
+      fileJson,
+      filePack,
+    ) {
       if (fileJson.existsSync()) {
         return uriPackageConfigJson;
       } else if (filePack.existsSync()) {
         return uriPackages;
       } else {
         throw StateError(
-            "Can't resolve project packageConfig: $fileJson ; $filePack");
+          "Can't resolve project packageConfig: $fileJson ; $filePack",
+        );
       }
     });
   }
@@ -178,8 +185,10 @@ class DartProject {
   /// Runs `dart pub get` in the [projectDirectory].
   Future<bool> runDartPubGet() async {
     var workingDir = await projectDirectory;
-    var processInfo = await runProcess('dart', ['pub', 'get'],
-        workingDirectory: workingDir.path);
+    var processInfo = await runProcess('dart', [
+      'pub',
+      'get',
+    ], workingDirectory: workingDir.path);
 
     var ok = await processInfo.checkExitCode();
     if (!ok) {
@@ -241,7 +250,10 @@ class DartProject {
 
       if (vmServicePort == null) {
         var freePort = await getFreeListenPort(
-            ports: [8181, 8171, 8191], startPort: 8161, endPort: 8191);
+          ports: [8181, 8171, 8191],
+          startPort: 8161,
+          endPort: 8191,
+        );
 
         if (freePort != 8181) {
           vmServicePort = freePort;
@@ -266,7 +278,7 @@ class DartProject {
           '--pause-isolates-on-unhandled-exceptions',
         'run',
         entrypoint,
-        ...args
+        ...args,
       ],
       workingDirectory: workingDirectory,
       handleSignals: handleSignals,
@@ -283,13 +295,14 @@ class DartProject {
   /// - [ports] is a [List] of ports to test.
   /// - [startPort] and [endPort] defines a range of ports to check.
   /// - If [shufflePorts] is `true` the ports order will be random.
-  static Future<int?> getFreeListenPort(
-      {Iterable<int>? ports,
-      Iterable<int>? skipPort,
-      int? startPort,
-      int? endPort,
-      bool shufflePorts = false,
-      Duration? testTimeout}) async {
+  static Future<int?> getFreeListenPort({
+    Iterable<int>? ports,
+    Iterable<int>? skipPort,
+    int? startPort,
+    int? endPort,
+    bool shufflePorts = false,
+    Duration? testTimeout,
+  }) async {
     var checkPortsSet = <int>{};
     if (ports != null) {
       checkPortsSet.addAll(ports);
@@ -327,13 +340,18 @@ class DartProject {
   }
 
   /// Returns `true` if [port] is free to listen.
-  static Future<bool> isFreeListenPort(int port,
-      {Duration? testTimeout}) async {
+  static Future<bool> isFreeListenPort(
+    int port, {
+    Duration? testTimeout,
+  }) async {
     testTimeout ??= Duration(seconds: 1);
 
     try {
-      var socket =
-          await Socket.connect('localhost', port, timeout: testTimeout);
+      var socket = await Socket.connect(
+        'localhost',
+        port,
+        timeout: testTimeout,
+      );
       try {
         socket.close();
       } catch (_) {}
@@ -355,15 +373,18 @@ class DartProject {
   /// - If [catchOutput] is `true` catches the [Process] outputs to [ProcessInfo.outputBuffer] and [ProcessInfo.errorOutputBuffer].
   /// - [stdoutFilter] is a filter for the [Process] `stdout`. Useful to remove sensitive data.
   /// - [stderrFilter] is a filter for the [Process] `stderr`. Useful to remove sensitive data.
-  Future<ProcessInfo> runProcess(String commandName, List<String> args,
-      {bool resolveCommandPath = true,
-      String? workingDirectory,
-      bool handleSignals = false,
-      bool redirectOutput = false,
-      bool catchOutput = false,
-      String Function(String o)? stdoutFilter,
-      String Function(String o)? stderrFilter,
-      void Function(ProcessSignal signal)? onSignal}) async {
+  Future<ProcessInfo> runProcess(
+    String commandName,
+    List<String> args, {
+    bool resolveCommandPath = true,
+    String? workingDirectory,
+    bool handleSignals = false,
+    bool redirectOutput = false,
+    bool catchOutput = false,
+    String Function(String o)? stdoutFilter,
+    String Function(String o)? stderrFilter,
+    void Function(ProcessSignal signal)? onSignal,
+  }) async {
     String? binPath;
     if (resolveCommandPath) {
       binPath = await executablePath(commandName);
@@ -374,11 +395,16 @@ class DartProject {
       binPath = commandName;
     }
 
-    log('INFO',
-        'Process.start> $binPath $args > workingDirectory: $workingDirectory');
+    log(
+      'INFO',
+      'Process.start> $binPath $args > workingDirectory: $workingDirectory',
+    );
 
-    var process =
-        await Process.start(binPath, args, workingDirectory: workingDirectory);
+    var process = await Process.start(
+      binPath,
+      args,
+      workingDirectory: workingDirectory,
+    );
 
     StreamSubscription<ProcessSignal>? listenSigInt;
     StreamSubscription<ProcessSignal>? listenSigTerm;
@@ -468,8 +494,10 @@ class DartProject {
   /// - %projectDirectory/.packages
   /// - %projectDirectory/.dart_tool/**
   ///
-  Future<bool> cleanDartPubGetGeneratedFiles(
-      {required String confirmProjectName, bool verbose = false}) async {
+  Future<bool> cleanDartPubGetGeneratedFiles({
+    required String confirmProjectName,
+    bool verbose = false,
+  }) async {
     var projDir = await projectDirectory;
 
     if (!projDir.existsSync()) {
@@ -498,8 +526,10 @@ class DartProject {
   final Map<String, String> _whichExecutables = <String, String>{};
 
   /// Returns an executable binary path for [executableName].
-  Future<String?> executablePath(String executableName,
-      {bool refresh = false}) async {
+  Future<String?> executablePath(
+    String executableName, {
+    bool refresh = false,
+  }) async {
     executableName = executableName.trim();
 
     String? binPath;
@@ -626,18 +656,26 @@ class DartSpawner extends DartProject {
   ///
   /// - Set by environment variable: "DART_SPAWNER_STARTUP_TIMEOUT" (in seconds).
   static final Duration defaultStartupTimeout = Duration(
-      seconds: _getEnvAsInt('DART_SPAWNER_STARTUP_TIMEOUT',
-              validator: (n) => n >= 2) ??
-          45);
+    seconds:
+        _getEnvAsInt(
+          'DART_SPAWNER_STARTUP_TIMEOUT',
+          validator: (n) => n >= 2,
+        ) ??
+        45,
+  );
 
   /// The default [Isolate] check ping timeout.
   ///
   /// - Set by environment variable: "DART_SPAWNER_ISOLATE_CHECK_PING_TIMEOUT" (in seconds).
   /// - When on [debugMode] is set to 3600 sec.
   static final Duration defaultIsolateCheckPingTimeout = Duration(
-      seconds: _getEnvAsInt('DART_SPAWNER_ISOLATE_CHECK_PING_TIMEOUT',
-              validator: (n) => n >= 1) ??
-          (debugMode ? 3600 : 2));
+    seconds:
+        _getEnvAsInt(
+          'DART_SPAWNER_ISOLATE_CHECK_PING_TIMEOUT',
+          validator: (n) => n >= 1,
+        ) ??
+        (debugMode ? 3600 : 2),
+  );
 
   static int _idCounter = 0;
 
@@ -651,17 +689,16 @@ class DartSpawner extends DartProject {
 
   /// Constructs a new [DartSpawner].
   ///
-  /// - [directory] the target project directory.type
+  /// - [directory] the target project directory.
   /// - [startupTimeout] the timeout to identify the [Isolate] startup.
-  DartSpawner(
-      {Directory? directory,
-      DartProjectLogger? logger,
-      bool logToConsole = false,
-      Duration? startupTimeout})
-      : startupTimeout = defaultStartupTimeout,
-        isolateCheckPingTimeout = defaultIsolateCheckPingTimeout,
-        super(
-            directory: directory, logger: logger, logToConsole: logToConsole) {
+  ///   Defaults to [defaultStartupTimeout].
+  DartSpawner({
+    super.directory,
+    super.logger,
+    super.logToConsole,
+    Duration? startupTimeout,
+  }) : startupTimeout = startupTimeout ?? defaultStartupTimeout,
+       isolateCheckPingTimeout = defaultIsolateCheckPingTimeout {
     logDebug(this);
   }
 
@@ -705,119 +742,179 @@ class DartSpawner extends DartProject {
   }
 
   /// Spawn a Dart entry point (script, [File] or [Uri]).
-  Future<SpawnedIsolate> spawnDart(dynamic dartEntryPoint, List<String> args,
-      {String? debugName,
-      bool enableObservatory = false,
-      bool runObservatory = false,
-      bool usesSpawnedMain = false}) {
+  Future<SpawnedIsolate> spawnDart(
+    dynamic dartEntryPoint,
+    List<String> args, {
+    String? debugName,
+    bool enableObservatory = false,
+    bool runObservatory = false,
+    bool usesSpawnedMain = false,
+  }) {
     if (dartEntryPoint is File) {
-      return spawnDartFile(dartEntryPoint, args,
-          debugName: debugName,
-          enableObservatory: enableObservatory,
-          runObservatory: runObservatory,
-          usesSpawnedMain: usesSpawnedMain);
+      return spawnDartFile(
+        dartEntryPoint,
+        args,
+        debugName: debugName,
+        enableObservatory: enableObservatory,
+        runObservatory: runObservatory,
+        usesSpawnedMain: usesSpawnedMain,
+      );
     } else if (dartEntryPoint is Uri) {
-      return spawnDartURI(dartEntryPoint, args,
-          debugName: debugName,
-          enableObservatory: enableObservatory,
-          runObservatory: runObservatory,
-          usesSpawnedMain: usesSpawnedMain);
+      return spawnDartURI(
+        dartEntryPoint,
+        args,
+        debugName: debugName,
+        enableObservatory: enableObservatory,
+        runObservatory: runObservatory,
+        usesSpawnedMain: usesSpawnedMain,
+      );
     } else if (dartEntryPoint is String) {
       if (isDartFilePath(dartEntryPoint)) {
         var dartFile = File(dartEntryPoint);
-        return spawnDartFile(dartFile, args,
-            debugName: debugName,
-            enableObservatory: enableObservatory,
-            runObservatory: runObservatory,
-            usesSpawnedMain: usesSpawnedMain);
+        return spawnDartFile(
+          dartFile,
+          args,
+          debugName: debugName,
+          enableObservatory: enableObservatory,
+          runObservatory: runObservatory,
+          usesSpawnedMain: usesSpawnedMain,
+        );
       } else {
-        return spawnDartScript(dartEntryPoint, args,
-            debugName: debugName,
-            enableObservatory: enableObservatory,
-            runObservatory: runObservatory,
-            usesSpawnedMain: usesSpawnedMain);
+        return spawnDartScript(
+          dartEntryPoint,
+          args,
+          debugName: debugName,
+          enableObservatory: enableObservatory,
+          runObservatory: runObservatory,
+          usesSpawnedMain: usesSpawnedMain,
+        );
       }
     } else {
       throw StateError(
-          'Unsupported Dart entry point! type: ${dartEntryPoint.runtimeType} > $dartEntryPoint');
+        'Unsupported Dart entry point! type: ${dartEntryPoint.runtimeType} > $dartEntryPoint',
+      );
     }
   }
 
   /// Spawn a Dart script.
-  Future<SpawnedIsolate> spawnDartScript(String dartScript, List<String> args,
-      {String? debugName,
-      bool enableObservatory = false,
-      bool runObservatory = false,
-      bool usesSpawnedMain = false}) {
+  Future<SpawnedIsolate> spawnDartScript(
+    String dartScript,
+    List<String> args, {
+    String? debugName,
+    bool enableObservatory = false,
+    bool runObservatory = false,
+    bool usesSpawnedMain = false,
+  }) {
     final dataUri = Uri.parse(
-        'data:application/dart;charset=utf-8,${Uri.encodeComponent(dartScript)}');
+      'data:application/dart;charset=utf-8,${Uri.encodeComponent(dartScript)}',
+    );
 
-    return _spawnDart(dartScript, '<script>', dataUri, args,
-        debugName: debugName,
-        enableObservatory: enableObservatory,
-        runObservatory: runObservatory,
-        usesSpawnedMain: usesSpawnedMain);
+    return _spawnDart(
+      dartScript,
+      '<script>',
+      dataUri,
+      args,
+      debugName: debugName,
+      enableObservatory: enableObservatory,
+      runObservatory: runObservatory,
+      usesSpawnedMain: usesSpawnedMain,
+    );
   }
 
   /// Spawn a Dart [File].
-  Future<SpawnedIsolate> spawnDartFile(File dartFile, List<String> args,
-          {String? debugName,
-          bool enableObservatory = false,
-          bool runObservatory = false,
-          bool usesSpawnedMain = false}) =>
-      _spawnDart(dartFile, 'File', dartFile.uri, args,
-          debugName: debugName,
-          enableObservatory: enableObservatory,
-          runObservatory: runObservatory,
-          usesSpawnedMain: usesSpawnedMain);
+  Future<SpawnedIsolate> spawnDartFile(
+    File dartFile,
+    List<String> args, {
+    String? debugName,
+    bool enableObservatory = false,
+    bool runObservatory = false,
+    bool usesSpawnedMain = false,
+  }) => _spawnDart(
+    dartFile,
+    'File',
+    dartFile.uri,
+    args,
+    debugName: debugName,
+    enableObservatory: enableObservatory,
+    runObservatory: runObservatory,
+    usesSpawnedMain: usesSpawnedMain,
+  );
 
   /// Spawn a Dart [Uri].
-  Future<SpawnedIsolate> spawnDartURI(Uri dartUri, List<String> args,
-          {String? debugName,
-          bool enableObservatory = false,
-          bool runObservatory = false,
-          bool usesSpawnedMain = false}) =>
-      _spawnDart(dartUri, 'Uri', dartUri, args,
-          debugName: debugName,
-          enableObservatory: enableObservatory,
-          runObservatory: runObservatory,
-          usesSpawnedMain: usesSpawnedMain);
+  Future<SpawnedIsolate> spawnDartURI(
+    Uri dartUri,
+    List<String> args, {
+    String? debugName,
+    bool enableObservatory = false,
+    bool runObservatory = false,
+    bool usesSpawnedMain = false,
+  }) => _spawnDart(
+    dartUri,
+    'Uri',
+    dartUri,
+    args,
+    debugName: debugName,
+    enableObservatory: enableObservatory,
+    runObservatory: runObservatory,
+    usesSpawnedMain: usesSpawnedMain,
+  );
 
   Future<SpawnedIsolate> _spawnDart(
-      Object spawnEntry, String spawnType, Uri dartUri, List<String> args,
-      {String? debugName,
-      bool enableObservatory = false,
-      bool runObservatory = false,
-      bool usesSpawnedMain = false}) async {
+    Object spawnEntry,
+    String spawnType,
+    Uri dartUri,
+    List<String> args, {
+    String? debugName,
+    bool enableObservatory = false,
+    bool runObservatory = false,
+    bool usesSpawnedMain = false,
+  }) async {
     if (!await _isIsolateSpawnUriSupported()) {
       throw StateError(
-          "Can't call `Isolate.spawnUri`, not running in a Dart VM!`");
+        "Can't call `Isolate.spawnUri`, not running in a Dart VM!`",
+      );
     }
 
     if (usesSpawnedMain) {
-      return _spawnManaged(spawnEntry, spawnType, dartUri, args, debugName,
-          enableObservatory, runObservatory);
+      return _spawnManaged(
+        spawnEntry,
+        spawnType,
+        dartUri,
+        args,
+        debugName,
+        enableObservatory,
+        runObservatory,
+      );
     } else {
-      return _spawn(spawnEntry, spawnType, dartUri, args, debugName,
-          enableObservatory, runObservatory);
+      return _spawn(
+        spawnEntry,
+        spawnType,
+        dartUri,
+        args,
+        debugName,
+        enableObservatory,
+        runObservatory,
+      );
     }
   }
 
   Future<SpawnedIsolate> _spawn(
-      Object spawnEntry,
-      String spawnType,
-      Uri dataUri,
-      List<String> args,
-      String? debugName,
-      bool enableObservatory,
-      bool runObservatory) async {
+    Object spawnEntry,
+    String spawnType,
+    Uri dataUri,
+    List<String> args,
+    String? debugName,
+    bool enableObservatory,
+    bool runObservatory,
+  ) async {
     _markSpawned();
 
     var projectDirectory = await this.projectDirectory;
 
     if (!await ensureProjectDependenciesResolved()) {
       throw StateError(
-          "Can't ensure that project dependencies are resolved: $projectDirectory");
+        "Can't ensure that project dependencies are resolved: $projectDirectory",
+      );
     }
 
     var projectPackageConfig = (await projectPackageConfigUri);
@@ -852,8 +949,10 @@ class DartSpawner extends DartProject {
       }
     });
 
-    this.log('INFO',
-        '[$spawnInfo] Spawning: {type: $spawnType, packageConfig: $projectPackageConfig} ; Dart Entry Point: $dataUri');
+    this.log(
+      'INFO',
+      '[$spawnInfo] Spawning: {type: $spawnType, packageConfig: $projectPackageConfig} ; Dart Entry Point: $dataUri',
+    );
 
     isolate = await Isolate.spawnUri(
       dataUri,
@@ -894,20 +993,22 @@ class DartSpawner extends DartProject {
   }
 
   Future<SpawnedIsolate> _spawnManaged(
-      Object spawnEntry,
-      String spawnType,
-      Uri dataUri,
-      List<String> args,
-      String? debugName,
-      bool enableObservatory,
-      bool runObservatory) async {
+    Object spawnEntry,
+    String spawnType,
+    Uri dataUri,
+    List<String> args,
+    String? debugName,
+    bool enableObservatory,
+    bool runObservatory,
+  ) async {
     _markSpawned();
 
     var projectDirectory = await this.projectDirectory;
 
     if (!await ensureProjectDependenciesResolved()) {
       throw StateError(
-          "Can't ensure that project dependencies are resolved: $projectDirectory");
+        "Can't ensure that project dependencies are resolved: $projectDirectory",
+      );
     }
 
     var projectPackageConfig = await projectPackageConfigUri;
@@ -931,7 +1032,9 @@ class DartSpawner extends DartProject {
       if (msg is List) {
         if (!startupCompleter.isCompleted) {
           startupCompleter.completeError(
-              msg.first as Object, StackTrace.fromString(msg.last as String));
+            msg.first as Object,
+            StackTrace.fromString(msg.last as String),
+          );
         }
       }
     });
@@ -955,8 +1058,10 @@ class DartSpawner extends DartProject {
       }
     });
 
-    this.log('INFO',
-        '[$spawnInfo] Spawning Managed: {type: $spawnType, packageConfig: $projectPackageConfig} ; Dart Entry Point: $dataUri');
+    this.log(
+      'INFO',
+      '[$spawnInfo] Spawning Managed: {type: $spawnType, packageConfig: $projectPackageConfig} ; Dart Entry Point: $dataUri',
+    );
 
     isolate = await Isolate.spawnUri(
       dataUri,
@@ -975,8 +1080,9 @@ class DartSpawner extends DartProject {
       observatoryURL = await _runObservatory(runObservatory);
     }
 
-    final sendPort =
-        await startupCompleter.future.timeout(Duration(seconds: 45));
+    final sendPort = await startupCompleter.future.timeout(
+      Duration(seconds: 45),
+    );
 
     var process = SpawnedIsolate(
       id,
@@ -1067,17 +1173,17 @@ class SpawnedIsolate {
   final bool stopByKill;
 
   SpawnedIsolate(
-      this.id,
-      this.spawnEntry,
-      this.type,
-      this.projectDirectory,
-      this.isolate,
-      this._isolateCompleter,
-      this._isolateCheckPingTimeout,
-      this.observatoryURL,
-      {OnSpawnedIsolateStop? onStop,
-      this.stopByKill = false})
-      : _onStop = onStop {
+    this.id,
+    this.spawnEntry,
+    this.type,
+    this.projectDirectory,
+    this.isolate,
+    this._isolateCompleter,
+    this._isolateCheckPingTimeout,
+    this.observatoryURL, {
+    this._onStop,
+    this.stopByKill = false,
+  }) {
     _listenSignals();
     _scheduleCheckIsolate();
   }
@@ -1102,7 +1208,9 @@ class SpawnedIsolate {
 
   Future<void> _cancelSignalListeners() async {
     await Future.forEach(
-        _signalListeners, (StreamSubscription sub) => sub.cancel());
+      _signalListeners,
+      (StreamSubscription sub) => sub.cancel(),
+    );
     _signalListeners.clear();
   }
 
@@ -1121,8 +1229,9 @@ class SpawnedIsolate {
 
     await _cancelSignalListeners();
 
-    if (_onStop != null) {
-      await _onStop!(reason ?? 'Terminated normally.');
+    final onStop = _onStop;
+    if (onStop != null) {
+      await onStop(reason ?? 'Terminated normally.');
     }
 
     if (stopByKill) {
@@ -1181,8 +1290,12 @@ class SpawnedIsolate {
 
 /// Helper to executed a spawned Dart script by [DartSpawner].
 Future<void> spawnedMain(
-    List<String> args, SendPort parentPort, int id, Function run,
-    [FutureOr<bool> Function()? stop]) async {
+  List<String> args,
+  SendPort parentPort,
+  int id,
+  Function run, [
+  FutureOr<bool> Function()? stop,
+]) async {
   final messagePort = ReceivePort();
 
   var debugName = Isolate.current.debugName;
@@ -1217,8 +1330,12 @@ Future<void> spawnedMain(
   _stopSpawned(isolateId, messagePort, stop, parentPort);
 }
 
-void _stopSpawned(String isolateId, ReceivePort port,
-    FutureOr<bool> Function()? stop, SendPort parentPort) async {
+void _stopSpawned(
+  String isolateId,
+  ReceivePort port,
+  FutureOr<bool> Function()? stop,
+  SendPort parentPort,
+) async {
   print('[$isolateId] Stopping isolate...');
   port.close();
 
@@ -1257,11 +1374,16 @@ Future<bool> _isIsolatePaused(Isolate isolate, Duration pingTimeout) async {
     }
   });
 
-  isolate.ping(receivePort.sendPort,
-      response: true, priority: Isolate.beforeNextEvent);
+  isolate.ping(
+    receivePort.sendPort,
+    response: true,
+    priority: Isolate.beforeNextEvent,
+  );
 
-  var pong =
-      await completer.future.timeout(pingTimeout, onTimeout: () => false);
+  var pong = await completer.future.timeout(
+    pingTimeout,
+    onTimeout: () => false,
+  );
 
   receivePort.close();
 
