@@ -162,7 +162,9 @@ void main() {
       expect(await info.exitCode.timeout(Duration(seconds: 60)), equals(0));
       expect(info.args.take(2), equals(['run', runnerPath]));
       await _waitFor(() => info.output.trim().endsWith(']'));
-      expect(jsonDecode(info.output.trim()), equals(args));
+      // The last line: `dart run` may print resolution messages before it.
+      var json = LineSplitter.split(info.output.trim()).last;
+      expect(jsonDecode(json), equals(args));
     });
 
     test('a lot of output with catchOutput', () async {
