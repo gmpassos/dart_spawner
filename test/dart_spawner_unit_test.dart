@@ -132,6 +132,42 @@ void main() {
       DartProject(directory: tempDir).log('INFO', 'x');
     });
 
+    test('projectSub*', () async {
+      var project = DartProject(directory: tempDir);
+      expect(
+        (await project.projectSubUri('bin/main.dart')).toFilePath(),
+        equals(pack_path.join(tempDir.path, 'bin', 'main.dart')),
+      );
+      expect(
+        (await project.projectSubFile('a/b.txt')).path,
+        equals(pack_path.join(tempDir.path, 'a', 'b.txt')),
+      );
+      expect(
+        (await project.projectSubDirectory('lib')).path,
+        equals(pack_path.join(tempDir.path, 'lib')),
+      );
+      expect(
+        (await project.projectPubspecFile).path,
+        equals(pack_path.join(tempDir.path, 'pubspec.yaml')),
+      );
+
+      // Without a directory: the current package.
+      var current = DartProject();
+      expect(
+        File.fromUri(await current.projectSubUri('pubspec.yaml')).existsSync(),
+        isTrue,
+      );
+    });
+
+    test('relative directory is made absolute', () async {
+      var relative = pack_path.relative(tempDir.path);
+      expect(pack_path.isRelative(relative), isTrue);
+      var project = DartProject(directory: Directory(relative));
+      var dir = await project.projectDirectory;
+      expect(pack_path.isAbsolute(dir.path), isTrue);
+      expect(pack_path.equals(dir.path, tempDir.path), isTrue);
+    });
+
     test('missing pubspec.yaml', () async {
       var project = DartProject(directory: tempDir);
       expect((await project.projectDirectory).path, equals(tempDir.path));
@@ -259,7 +295,17 @@ dependencies:
     path: ./does_not_exist
 ''');
       var project = DartProject(directory: tempDir);
-      await expectLater(project.runDartPubGet(), throwsStateError);
+      await expectLater(
+        project.runDartPubGet(),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            // Includes the `pub get` output:
+            allOf(contains('dart pub get'), contains('does_not_exist')),
+          ),
+        ),
+      );
     });
 
     test('executablePath', () async {

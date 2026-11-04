@@ -229,16 +229,23 @@ class DartProject {
   }
 
   /// Runs `dart pub get` in the [projectDirectory].
+  ///
+  /// Throws a [StateError] (including the `pub` output) if it fails.
   Future<bool> runDartPubGet() async {
     var workingDir = await projectDirectory;
-    var processInfo = await runProcess('dart', [
-      'pub',
-      'get',
-    ], workingDirectory: workingDir.path);
+    // `catchOutput` drains the process output: an undrained `pub get` that
+    // prints more than the OS pipe buffer would never exit.
+    var processInfo = await runProcess(
+      'dart',
+      ['pub', 'get'],
+      workingDirectory: workingDir.path,
+      catchOutput: true,
+    );
 
     var ok = await processInfo.checkExitCode();
     if (!ok) {
-      throw StateError('Error running: dart pub get > $processInfo');
+      var output = '${processInfo.output}\n${processInfo.errorOutput}'.trim();
+      throw StateError('Error running: dart pub get > $processInfo\n$output');
     }
 
     return ok;
@@ -419,6 +426,11 @@ class DartProject {
   /// - If [catchOutput] is `true` catches the [Process] outputs to [ProcessInfo.outputBuffer] and [ProcessInfo.errorOutputBuffer].
   /// - [stdoutFilter] is a filter for the [Process] `stdout`. Useful to remove sensitive data.
   /// - [stderrFilter] is a filter for the [Process] `stderr`. Useful to remove sensitive data.
+  ///
+  /// If neither [redirectOutput] nor [catchOutput] is `true`, the [Process]
+  /// `stdout` and `stderr` are not consumed: the caller must drain
+  /// [ProcessInfo.process] `stdout`/`stderr`, otherwise a process that writes
+  /// more than the OS pipe buffer blocks and never exits.
   Future<ProcessInfo> runProcess(
     String commandName,
     List<String> args, {
@@ -473,41 +485,23 @@ class DartProject {
     final stdoutFilterF = stdoutFilter ?? (o) => o;
     final stderrFilterF = stderrFilter ?? (o) => o;
 
-    if (catchOutput && redirectOutput) {
-      // ignore: unawaited_futures
-      process.stdout.transform(outputDecoder).forEach((o) {
-        o = stdoutFilterF(o);
-        stdout.write(o);
-        processInfo.outputBuffer.add(o);
-      });
-      // ignore: unawaited_futures
-      process.stderr.transform(outputDecoder).forEach((o) {
-        o = stderrFilterF(o);
-        stderr.write(o);
-        processInfo.errorOutputBuffer.add(o);
-      });
-    } else if (catchOutput) {
-      // ignore: unawaited_futures
-      process.stdout.transform(outputDecoder).forEach((o) {
-        o = stdoutFilterF(o);
-        processInfo.outputBuffer.add(o);
-      });
-      // ignore: unawaited_futures
-      process.stderr.transform(outputDecoder).forEach((o) {
-        o = stderrFilterF(o);
-        processInfo.errorOutputBuffer.add(o);
-      });
-    } else if (redirectOutput) {
-      // ignore: unawaited_futures
-      process.stdout.transform(outputDecoder).forEach((o) {
-        o = stdoutFilterF(o);
-        stdout.write(o);
-      });
-      // ignore: unawaited_futures
-      process.stderr.transform(outputDecoder).forEach((o) {
-        o = stderrFilterF(o);
-        stderr.write(o);
-      });
+    if (catchOutput || redirectOutput) {
+      // `ProcessInfo.exitCode` waits for these, so the output is complete
+      // when it completes.
+      processInfo._outputDone.add(
+        process.stdout.transform(outputDecoder).forEach((o) {
+          o = stdoutFilterF(o);
+          if (redirectOutput) stdout.write(o);
+          if (catchOutput) processInfo.outputBuffer.add(o);
+        }),
+      );
+      processInfo._outputDone.add(
+        process.stderr.transform(outputDecoder).forEach((o) {
+          o = stderrFilterF(o);
+          if (redirectOutput) stderr.write(o);
+          if (catchOutput) processInfo.errorOutputBuffer.add(o);
+        }),
+      );
     }
 
     process.exitCode.then((_) {
@@ -630,8 +624,29 @@ class ProcessInfo {
 
   int? _exitCode;
 
+  /// Completes when the `stdout`/`stderr` consumers set by
+  /// [DartProject.runProcess] (`catchOutput`/`redirectOutput`) are done.
+  final List<Future<void>> _outputDone = [];
+
   /// The [Process.exitCode] of [process].
-  Future<int> get exitCode async => _exitCode ??= await process.exitCode;
+  ///
+  /// When the output is caught or redirected (see [DartProject.runProcess]),
+  /// it also waits (up to 5s after the exit, in case another process keeps
+  /// the pipes open) for the output to be consumed, so [output] and
+  /// [errorOutput] are complete.
+  Future<int> get exitCode async {
+    var exitCode = _exitCode;
+    if (exitCode != null) return exitCode;
+
+    exitCode = await process.exitCode;
+
+    if (_outputDone.isNotEmpty) {
+      await Future.wait(_outputDone.map((f) => f.catchError((_) {})))
+          .timeout(Duration(seconds: 5), onTimeout: () => []);
+    }
+
+    return _exitCode ??= exitCode;
+  }
 
   /// Returns `true` if [exitCode] matches [expectedExitCode].
   Future<bool> checkExitCode([int expectedExitCode = 0]) async {
@@ -922,6 +937,9 @@ class DartSpawner extends DartProject {
   }
 
   /// Spawn a Dart [File].
+  ///
+  /// A relative [dartFile] path is resolved against the current working
+  /// directory (see [File.absolute]).
   Future<SpawnedIsolate> spawnDartFile(
     File dartFile,
     List<String> args, {
@@ -932,7 +950,9 @@ class DartSpawner extends DartProject {
   }) => _spawnDart(
     dartFile,
     'File',
-    dartFile.uri,
+    // A relative `File.uri` would be resolved by `Isolate.spawnUri` against
+    // the current isolate's script URI, not the working directory.
+    dartFile.absolute.uri,
     args,
     debugName: debugName,
     enableObservatory: enableObservatory,

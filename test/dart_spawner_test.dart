@@ -286,7 +286,9 @@ void main(List<String> args, dynamic parentPort) {
         ),
         isTrue,
       );
-    });
+      // `dart pub get` plus 6 Dart VM runs: more than the default 30s when the
+      // suites run concurrently.
+    }, timeout: Timeout(Duration(minutes: 3)));
   });
 }
 
