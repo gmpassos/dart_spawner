@@ -485,41 +485,23 @@ class DartProject {
     final stdoutFilterF = stdoutFilter ?? (o) => o;
     final stderrFilterF = stderrFilter ?? (o) => o;
 
-    if (catchOutput && redirectOutput) {
-      // ignore: unawaited_futures
-      process.stdout.transform(outputDecoder).forEach((o) {
-        o = stdoutFilterF(o);
-        stdout.write(o);
-        processInfo.outputBuffer.add(o);
-      });
-      // ignore: unawaited_futures
-      process.stderr.transform(outputDecoder).forEach((o) {
-        o = stderrFilterF(o);
-        stderr.write(o);
-        processInfo.errorOutputBuffer.add(o);
-      });
-    } else if (catchOutput) {
-      // ignore: unawaited_futures
-      process.stdout.transform(outputDecoder).forEach((o) {
-        o = stdoutFilterF(o);
-        processInfo.outputBuffer.add(o);
-      });
-      // ignore: unawaited_futures
-      process.stderr.transform(outputDecoder).forEach((o) {
-        o = stderrFilterF(o);
-        processInfo.errorOutputBuffer.add(o);
-      });
-    } else if (redirectOutput) {
-      // ignore: unawaited_futures
-      process.stdout.transform(outputDecoder).forEach((o) {
-        o = stdoutFilterF(o);
-        stdout.write(o);
-      });
-      // ignore: unawaited_futures
-      process.stderr.transform(outputDecoder).forEach((o) {
-        o = stderrFilterF(o);
-        stderr.write(o);
-      });
+    if (catchOutput || redirectOutput) {
+      // `ProcessInfo.exitCode` waits for these, so the output is complete
+      // when it completes.
+      processInfo._outputDone.add(
+        process.stdout.transform(outputDecoder).forEach((o) {
+          o = stdoutFilterF(o);
+          if (redirectOutput) stdout.write(o);
+          if (catchOutput) processInfo.outputBuffer.add(o);
+        }),
+      );
+      processInfo._outputDone.add(
+        process.stderr.transform(outputDecoder).forEach((o) {
+          o = stderrFilterF(o);
+          if (redirectOutput) stderr.write(o);
+          if (catchOutput) processInfo.errorOutputBuffer.add(o);
+        }),
+      );
     }
 
     process.exitCode.then((_) {
@@ -642,8 +624,29 @@ class ProcessInfo {
 
   int? _exitCode;
 
+  /// Completes when the `stdout`/`stderr` consumers set by
+  /// [DartProject.runProcess] (`catchOutput`/`redirectOutput`) are done.
+  final List<Future<void>> _outputDone = [];
+
   /// The [Process.exitCode] of [process].
-  Future<int> get exitCode async => _exitCode ??= await process.exitCode;
+  ///
+  /// When the output is caught or redirected (see [DartProject.runProcess]),
+  /// it also waits (up to 5s after the exit, in case another process keeps
+  /// the pipes open) for the output to be consumed, so [output] and
+  /// [errorOutput] are complete.
+  Future<int> get exitCode async {
+    var exitCode = _exitCode;
+    if (exitCode != null) return exitCode;
+
+    exitCode = await process.exitCode;
+
+    if (_outputDone.isNotEmpty) {
+      await Future.wait(_outputDone.map((f) => f.catchError((_) {})))
+          .timeout(Duration(seconds: 5), onTimeout: () => []);
+    }
+
+    return _exitCode ??= exitCode;
+  }
 
   /// Returns `true` if [exitCode] matches [expectedExitCode].
   Future<bool> checkExitCode([int expectedExitCode = 0]) async {

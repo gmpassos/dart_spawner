@@ -139,8 +139,8 @@ void main() {
       expect(await info.checkExitCode(), isFalse);
       expect(await info.checkExitCode(3), isTrue);
       expect(info.toString(), contains('exitCode: 3'));
-      // The output streams are done shortly after the exit:
-      await _waitFor(() => info.errorOutput.contains('exiting with 3'));
+      // `exitCode` waits for the caught output:
+      expect(info.errorOutput, equals('exiting with 3\n'));
       expect(info.output, isEmpty);
     });
 
@@ -161,7 +161,6 @@ void main() {
       ], catchOutput: true);
       expect(await info.exitCode.timeout(Duration(seconds: 60)), equals(0));
       expect(info.args.take(2), equals(['run', runnerPath]));
-      await _waitFor(() => info.output.trim().endsWith(']'));
       // The last line: `dart run` may print resolution messages before it.
       var json = LineSplitter.split(info.output.trim()).last;
       expect(jsonDecode(json), equals(args));
@@ -178,8 +177,9 @@ void main() {
         stdoutFilter: (o) => o.replaceAll('x', 'y'),
       );
       expect(await info.exitCode.timeout(Duration(seconds: 60)), equals(0));
-      await _waitFor(() => info.errorOutput.contains('chatty done'));
-      await _waitFor(() => info.output.length == lines * 1024);
+      // Complete as soon as `exitCode` completes:
+      expect(info.errorOutput, equals('chatty done\n'));
+      expect(info.output.length, equals(lines * 1024));
       var outLines = LineSplitter.split(info.output).toList();
       expect(outLines.length, equals(lines));
       expect(outLines.every((l) => l == 'y' * 1023), isTrue);
@@ -332,17 +332,4 @@ void main() {
       });
     }
   });
-}
-
-Future<void> _waitFor(
-  bool Function() condition, {
-  Duration timeout = const Duration(seconds: 10),
-}) async {
-  var sw = Stopwatch()..start();
-  while (!condition()) {
-    if (sw.elapsed > timeout) {
-      fail('Condition not met within $timeout');
-    }
-    await Future.delayed(Duration(milliseconds: 20));
-  }
 }

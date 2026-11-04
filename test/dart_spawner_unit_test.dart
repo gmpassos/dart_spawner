@@ -295,7 +295,17 @@ dependencies:
     path: ./does_not_exist
 ''');
       var project = DartProject(directory: tempDir);
-      await expectLater(project.runDartPubGet(), throwsStateError);
+      await expectLater(
+        project.runDartPubGet(),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            // Includes the `pub get` output:
+            allOf(contains('dart pub get'), contains('does_not_exist')),
+          ),
+        ),
+      );
     });
 
     test('executablePath', () async {

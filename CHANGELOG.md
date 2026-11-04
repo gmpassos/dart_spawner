@@ -5,6 +5,11 @@
     relative paths, which `Isolate.spawnUri` resolved against the current
     isolate's script URI instead of the working directory. The file is now
     resolved with `File.absolute`.
+- `ProcessInfo`:
+  - `exitCode`: when the output is caught or redirected, also wait (up to 5s
+    after the exit) for `stdout`/`stderr` to be consumed, so `output` and
+    `errorOutput` are complete once it completes. Previously they could still
+    be empty right after `exitCode` completed.
 - `DartProject`:
   - `runDartPubGet`: drain the `pub get` output (an undrained process that
     prints more than the OS pipe buffer never exits) and include it in the
