@@ -59,7 +59,7 @@ void main() async {
   var spawner = DartSpawner();
   print(spawner);
 
-  var file = await spawner.projectSubFile('test/hello-world.dart');
+  var file = await spawner.projectSubFile('test/hello_world.dart');
   print('Spawning file: $file');
 
   var spawned = await spawner.spawnDart(file, ['x', 'y']);
@@ -100,6 +100,23 @@ void main() async {
 ```
 
 - NOTE: It will use the dependencies of the target project and not the ones used in the current `Isolate`.
+- If the target project is a [pub workspace][pub_workspaces] member (`resolution: workspace`),
+  the workspace root's `.dart_tool/package_config.json` is used.
+
+[pub_workspaces]: https://dart.dev/tools/pub/workspaces
+
+## Errors and exit code
+
+If the spawned script throws an uncaught error, `exitCode` completes with
+`DartSpawner.uncaughtErrorExitCode` (`255`) and the error is available at
+`spawner.uncaughtError`:
+
+```dart
+var spawned = await spawner.spawnDart(script, []);
+if (await spawned.exitCode != 0) {
+  print('Failed: ${spawner.uncaughtError}');
+}
+```
 
 ## Dart VM
 
@@ -107,7 +124,7 @@ Note that `DartSpawner` uses [Isolate.spawnUri][isolate_spawnUri]
 to run a Dart Entry Point (script/file/Uri). This is not supported outside the Dart VM
 or in a compiled dart file (`dart compile exe foo.dart`)!
 
-[isolate_spawnUri]: https://api.dart.dev/stable/2.13.4/dart-isolate/Isolate/spawnUri.html
+[isolate_spawnUri]: https://api.dart.dev/stable/dart-isolate/Isolate/spawnUri.html
 
 ## Features and bugs
 
