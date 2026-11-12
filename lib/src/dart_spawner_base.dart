@@ -5,6 +5,7 @@ import 'dart:isolate';
 
 import 'package:async_extension/async_extension.dart';
 import 'package:dart_spawner/dart_spawner.dart';
+import 'package:path/path.dart' as pack_path;
 import 'package:yaml/yaml.dart';
 
 import 'dart_spawner_tools.dart';
@@ -126,8 +127,12 @@ class DartProject {
       });
 
   static bool _hasPackageConfig(Directory dir) =>
-      File.fromUri(dir.uri.resolve('.dart_tool/package_config.json'))
-          .existsSync();
+      _packageConfigFile(dir).existsSync();
+
+  /// The `.dart_tool/package_config.json` [File] of [dir] (may not exist).
+  /// Shared by [_hasPackageConfig] and [resolvePackageConfigFile].
+  static File _packageConfigFile(Directory dir) =>
+      File.fromUri(dir.uri.resolve('.dart_tool/package_config.json'));
 
   static bool _isWorkspaceMember(Directory dir) {
     var pubspecFile = File.fromUri(dir.uri.resolve('pubspec.yaml'));
@@ -257,6 +262,15 @@ class DartProject {
   /// - [entrypoint] is the Dart entrypoint, usually a Dart file.
   /// - [args] is the arguments to pass to the [entrypoint].
   /// - [workingDirectory] is the [Process] working directory. If `null` will use the current working directory.
+  /// - [packageConfig] is the `package_config.json` path passed to the VM
+  ///   (`--packages`). If `null` and [entrypoint] is a kernel file (`.dill`),
+  ///   it's the one `dart run` would use: see [resolvePackageConfigFile].
+  ///   Since Dart 3.14, `dart run <file>.dill` in a package with build hooks
+  ///   starts the program with no package config (`Isolate.packageConfig` and
+  ///   `Isolate.resolvePackageUri` return `null`), so `package:` resources
+  ///   can't be resolved; an explicit `--packages` keeps them working.
+  ///   A relative [packageConfig] is relative to the current directory (not
+  ///   to [workingDirectory]): it's passed as an absolute path.
   /// - [enableVMService] - if `true` runs Dart VM with `--enable-vm-service`.
   ///   - [vmServiceAddress] - the VM Service listen address.
   ///   - [vmServicePort] - the VM Service listen port.
@@ -282,6 +296,7 @@ class DartProject {
     bool pauseIsolatesOnExit = false,
     bool pauseIsolatesOnUnhandledExceptions = false,
     String? workingDirectory,
+    String? packageConfig,
     bool handleSignals = false,
     bool redirectOutput = false,
     bool catchOutput = false,
@@ -290,6 +305,18 @@ class DartProject {
     String Function(String o)? stderrFilter,
     void Function(ProcessSignal signal)? onSignal,
   }) async {
+    if (packageConfig == null) {
+      if (isKernelFile(entrypoint)) {
+        packageConfig = resolvePackageConfigFile(
+          workingDirectory: workingDirectory,
+        )?.path;
+      }
+    } else {
+      // The child VM resolves a relative `--packages` against its own
+      // working directory: made absolute here, against the caller's.
+      packageConfig = pack_path.normalize(File(packageConfig).absolute.path);
+    }
+
     String vmService = '';
     if (!enableVMService) {
       pauseIsolatesOnStart = false;
@@ -335,6 +362,8 @@ class DartProject {
         if (pauseIsolatesOnExit) '--pause-isolates-on-exit',
         if (pauseIsolatesOnUnhandledExceptions)
           '--pause-isolates-on-unhandled-exceptions',
+        // A VM option: before `run`, so `dart run` still runs the build hooks.
+        if (packageConfig != null) '--packages=$packageConfig',
         'run',
         entrypoint,
         ...args,
@@ -348,6 +377,41 @@ class DartProject {
       stderrFilter: stderrFilter,
       onSignal: onSignal,
     );
+  }
+
+  /// Returns `true` if [entrypoint] is a Dart kernel file (`.dill`).
+  static bool isKernelFile(String entrypoint) =>
+      entrypoint.toLowerCase().endsWith('.dill');
+
+  /// Returns the `.dart_tool/package_config.json` that `dart run` uses in
+  /// [workingDirectory] (default: the current directory): the first one
+  /// found in it or in a parent directory. Returns `null` if there's none.
+  ///
+  /// Used by [runDartVM] to pass `--packages` explicitly for a kernel
+  /// entrypoint (see its `packageConfig` parameter).
+  static File? resolvePackageConfigFile({String? workingDirectory}) {
+    // Normalized: `Directory.parent` is lexical, so for an un-normalized path
+    // (`/a/pkg/../other`) the walk would visit `/a/pkg`, which isn't an
+    // ancestor of `/a/other`, and could pick up the wrong package config.
+    var dir = Directory(
+      pack_path.normalize(
+        (workingDirectory != null
+                ? Directory(workingDirectory)
+                : Directory.current)
+            .absolute
+            .path,
+      ),
+    );
+
+    while (true) {
+      var file = _packageConfigFile(dir);
+      if (file.existsSync()) return file;
+
+      var parent = dir.parent;
+      // The root directory is its own parent:
+      if (parent.path == dir.path) return null;
+      dir = parent;
+    }
   }
 
   /// Returns a [ServerSocket] port free to listen.

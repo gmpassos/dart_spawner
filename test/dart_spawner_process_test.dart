@@ -264,6 +264,126 @@ void main() {
       }
     });
 
+    test('runDartVM with a kernel (.dill) entrypoint', () async {
+      var project = DartProject();
+
+      // Compiled into a temporary directory (not the source tree): nothing is
+      // left behind if the test is killed, and parallel runs don't collide.
+      var tmpDir = Directory.systemTemp.createTempSync('dart_spawner_dill_');
+      var dillPath = pack_path.join(tmpDir.path, 'spawner_runner.dill');
+
+      try {
+        var compile = await Process.run(Platform.resolvedExecutable, [
+          'compile',
+          'kernel',
+          runnerPath,
+          '-o',
+          dillPath,
+        ]);
+        expect(compile.exitCode, equals(0), reason: '${compile.stderr}');
+
+        // `--packages` resolved automatically (from the current directory,
+        // this package), before `run`:
+        var info = await project.runDartVM(dillPath, [
+          'package-config',
+        ], catchOutput: true);
+        expect(await info.exitCode.timeout(Duration(seconds: 60)), equals(0));
+        expect(
+          info.args,
+          equals([
+            '--packages=${File(packageConfigPath).absolute.path}',
+            'run',
+            dillPath,
+            'package-config',
+          ]),
+        );
+        var line = LineSplitter.split(info.output.trim()).last;
+        expect(line, equals('packageConfig=${Uri.file(packageConfigPath)}'));
+
+        // An explicit `packageConfig`:
+        var info2 = await project.runDartVM(
+          dillPath,
+          ['package-config'],
+          packageConfig: packageConfigPath,
+          catchOutput: true,
+        );
+        expect(await info2.exitCode.timeout(Duration(seconds: 60)), equals(0));
+        expect(info2.args.first, equals('--packages=$packageConfigPath'));
+
+        // A relative `packageConfig` is relative to the current directory,
+        // not to `workingDirectory`: passed as an absolute path.
+        var info3 = await project.runDartVM(
+          dillPath,
+          ['package-config'],
+          workingDirectory: tmpDir.path,
+          packageConfig: pack_path.relative(packageConfigPath),
+          catchOutput: true,
+        );
+        expect(await info3.exitCode.timeout(Duration(seconds: 60)), equals(0));
+        expect(
+          info3.args.first,
+          equals('--packages=${File(packageConfigPath).absolute.path}'),
+        );
+        var line3 = LineSplitter.split(info3.output.trim()).last;
+        expect(line3, equals('packageConfig=${Uri.file(packageConfigPath)}'));
+      } finally {
+        tmpDir.deleteSync(recursive: true);
+      }
+
+      // A `.dart` entrypoint is left to `dart run` (no `--packages`):
+      var info4 = await project.runDartVM(runnerPath, [
+        'exit',
+        '0',
+      ], catchOutput: true);
+      expect(info4.args.first, equals('run'));
+      expect(await info4.exitCode.timeout(Duration(seconds: 60)), equals(0));
+    });
+
+    test('resolvePackageConfigFile / isKernelFile', () async {
+      expect(DartProject.isKernelFile('a/b.dill'), isTrue);
+      expect(DartProject.isKernelFile('a/b.DILL'), isTrue);
+      expect(DartProject.isKernelFile('a/b.dart'), isFalse);
+
+      var projectDir = await DartProject().projectDirectory;
+      var expected = File(packageConfigPath).absolute.path;
+
+      // From the package root and from a sub-directory (searches parents):
+      expect(
+        DartProject.resolvePackageConfigFile(workingDirectory: projectDir.path)
+            ?.path,
+        equals(expected),
+      );
+      expect(
+        DartProject.resolvePackageConfigFile(
+          workingDirectory: pack_path.join(projectDir.path, 'test', 'fixtures'),
+        )?.path,
+        equals(expected),
+      );
+
+      // None outside any package:
+      var tmp = Directory.systemTemp.createTempSync('dart_spawner_no_pkg_');
+      try {
+        expect(
+          DartProject.resolvePackageConfigFile(workingDirectory: tmp.path),
+          isNull,
+        );
+        // The same directory through `..` segments that pass by this package
+        // (`<package>/../../<tmp>`): it's normalized, so this package (not an
+        // ancestor of `tmp`) isn't searched:
+        var viaPackage = pack_path.join(
+          projectDir.path,
+          pack_path.relative(tmp.path, from: projectDir.path),
+        );
+        expect(viaPackage, contains('..'));
+        expect(
+          DartProject.resolvePackageConfigFile(workingDirectory: viaPackage),
+          isNull,
+        );
+      } finally {
+        tmp.deleteSync(recursive: true);
+      }
+    });
+
     test('runDartVM with VM service options', () async {
       var project = DartProject();
 

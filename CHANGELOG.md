@@ -1,3 +1,16 @@
+## 1.3.1
+
+- `DartProject.runDartVM`:
+  - A kernel entrypoint (`.dill`) is run with an explicit `--packages` (the
+    `package_config.json` `dart run` uses in the working directory). Since
+    Dart 3.14, `dart run <file>.dill` in a package with build hooks starts the
+    program with no package config: `Isolate.packageConfig` and
+    `Isolate.resolvePackageUri` return `null`, so `package:` resources can't
+    be resolved.
+  - Added the `packageConfig` parameter (explicit `--packages`; a relative
+    path is relative to the current directory, not to `workingDirectory`).
+- Added `DartProject.isKernelFile` and `DartProject.resolvePackageConfigFile`.
+
 ## 1.3.0
 
 - `DartSpawner`:

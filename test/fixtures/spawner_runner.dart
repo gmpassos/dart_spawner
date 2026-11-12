@@ -9,6 +9,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:developer';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:dart_spawner/dart_spawner.dart';
 
@@ -29,6 +30,10 @@ Future<void> main(List<String> args) async {
       );
       var spawner = DartSpawner();
       print('instance.startupTimeout=${spawner.startupTimeout.inSeconds}');
+      exit(0);
+    case 'package-config':
+      // The package config this VM runs with (`null` if none).
+      print('packageConfig=${await Isolate.packageConfig}');
       exit(0);
     case 'echo-args':
       print(jsonEncode(rest));
