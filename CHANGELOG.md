@@ -7,7 +7,8 @@
     program with no package config: `Isolate.packageConfig` and
     `Isolate.resolvePackageUri` return `null`, so `package:` resources can't
     be resolved.
-  - Added the `packageConfig` parameter (explicit `--packages`).
+  - Added the `packageConfig` parameter (explicit `--packages`; a relative
+    path is relative to the current directory, not to `workingDirectory`).
 - Added `DartProject.isKernelFile` and `DartProject.resolvePackageConfigFile`.
 
 ## 1.3.0

@@ -5,6 +5,7 @@ import 'dart:isolate';
 
 import 'package:async_extension/async_extension.dart';
 import 'package:dart_spawner/dart_spawner.dart';
+import 'package:path/path.dart' as pack_path;
 import 'package:yaml/yaml.dart';
 
 import 'dart_spawner_tools.dart';
@@ -126,8 +127,12 @@ class DartProject {
       });
 
   static bool _hasPackageConfig(Directory dir) =>
-      File.fromUri(dir.uri.resolve('.dart_tool/package_config.json'))
-          .existsSync();
+      _packageConfigFile(dir).existsSync();
+
+  /// The `.dart_tool/package_config.json` [File] of [dir] (may not exist).
+  /// Shared by [_hasPackageConfig] and [resolvePackageConfigFile].
+  static File _packageConfigFile(Directory dir) =>
+      File.fromUri(dir.uri.resolve('.dart_tool/package_config.json'));
 
   static bool _isWorkspaceMember(Directory dir) {
     var pubspecFile = File.fromUri(dir.uri.resolve('pubspec.yaml'));
@@ -264,6 +269,8 @@ class DartProject {
   ///   starts the program with no package config (`Isolate.packageConfig` and
   ///   `Isolate.resolvePackageUri` return `null`), so `package:` resources
   ///   can't be resolved; an explicit `--packages` keeps them working.
+  ///   A relative [packageConfig] is relative to the current directory (not
+  ///   to [workingDirectory]): it's passed as an absolute path.
   /// - [enableVMService] - if `true` runs Dart VM with `--enable-vm-service`.
   ///   - [vmServiceAddress] - the VM Service listen address.
   ///   - [vmServicePort] - the VM Service listen port.
@@ -298,10 +305,16 @@ class DartProject {
     String Function(String o)? stderrFilter,
     void Function(ProcessSignal signal)? onSignal,
   }) async {
-    if (packageConfig == null && isKernelFile(entrypoint)) {
-      packageConfig = resolvePackageConfigFile(
-        workingDirectory: workingDirectory,
-      )?.path;
+    if (packageConfig == null) {
+      if (isKernelFile(entrypoint)) {
+        packageConfig = resolvePackageConfigFile(
+          workingDirectory: workingDirectory,
+        )?.path;
+      }
+    } else {
+      // The child VM resolves a relative `--packages` against its own
+      // working directory: made absolute here, against the caller's.
+      packageConfig = pack_path.normalize(File(packageConfig).absolute.path);
     }
 
     String vmService = '';
@@ -377,16 +390,21 @@ class DartProject {
   /// Used by [runDartVM] to pass `--packages` explicitly for a kernel
   /// entrypoint (see its `packageConfig` parameter).
   static File? resolvePackageConfigFile({String? workingDirectory}) {
-    var dir =
+    // Normalized: `Directory.parent` is lexical, so for an un-normalized path
+    // (`/a/pkg/../other`) the walk would visit `/a/pkg`, which isn't an
+    // ancestor of `/a/other`, and could pick up the wrong package config.
+    var dir = Directory(
+      pack_path.normalize(
         (workingDirectory != null
                 ? Directory(workingDirectory)
                 : Directory.current)
-            .absolute;
+            .absolute
+            .path,
+      ),
+    );
 
     while (true) {
-      var file = File(
-        dir.uri.resolve('.dart_tool/package_config.json').toFilePath(),
-      );
+      var file = _packageConfigFile(dir);
       if (file.existsSync()) return file;
 
       var parent = dir.parent;
