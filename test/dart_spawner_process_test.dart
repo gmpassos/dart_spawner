@@ -264,6 +264,98 @@ void main() {
       }
     });
 
+    test('runDartVM with a kernel (.dill) entrypoint', () async {
+      var project = DartProject();
+
+      // Compiled next to the runner, inside this package: `dart run` resolves
+      // the same package config for it.
+      var dillPath = pack_path.join(
+        pack_path.dirname(runnerPath),
+        'spawner_runner_tmp_test.dill',
+      );
+      var compile = await Process.run(Platform.resolvedExecutable, [
+        'compile',
+        'kernel',
+        runnerPath,
+        '-o',
+        dillPath,
+      ]);
+      expect(compile.exitCode, equals(0), reason: '${compile.stderr}');
+
+      try {
+        // `--packages` resolved automatically, before `run`:
+        var info = await project.runDartVM(dillPath, [
+          'package-config',
+        ], catchOutput: true);
+        expect(await info.exitCode.timeout(Duration(seconds: 60)), equals(0));
+        expect(
+          info.args,
+          equals([
+            '--packages=${File(packageConfigPath).absolute.path}',
+            'run',
+            dillPath,
+            'package-config',
+          ]),
+        );
+        var line = LineSplitter.split(info.output.trim()).last;
+        expect(line, equals('packageConfig=${Uri.file(packageConfigPath)}'));
+
+        // An explicit `packageConfig`:
+        var info2 = await project.runDartVM(
+          dillPath,
+          ['package-config'],
+          packageConfig: packageConfigPath,
+          catchOutput: true,
+        );
+        expect(await info2.exitCode.timeout(Duration(seconds: 60)), equals(0));
+        expect(info2.args.first, equals('--packages=$packageConfigPath'));
+      } finally {
+        var dill = File(dillPath);
+        if (dill.existsSync()) dill.deleteSync();
+      }
+
+      // A `.dart` entrypoint is left to `dart run` (no `--packages`):
+      var info3 = await project.runDartVM(runnerPath, [
+        'exit',
+        '0',
+      ], catchOutput: true);
+      expect(info3.args.first, equals('run'));
+      expect(await info3.exitCode.timeout(Duration(seconds: 60)), equals(0));
+    });
+
+    test('resolvePackageConfigFile / isKernelFile', () async {
+      expect(DartProject.isKernelFile('a/b.dill'), isTrue);
+      expect(DartProject.isKernelFile('a/b.DILL'), isTrue);
+      expect(DartProject.isKernelFile('a/b.dart'), isFalse);
+
+      var projectDir = await DartProject().projectDirectory;
+      var expected = File(packageConfigPath).absolute.path;
+
+      // From the package root and from a sub-directory (searches parents):
+      expect(
+        DartProject.resolvePackageConfigFile(workingDirectory: projectDir.path)
+            ?.path,
+        equals(expected),
+      );
+      expect(
+        DartProject.resolvePackageConfigFile(
+          workingDirectory: pack_path.join(projectDir.path, 'test', 'fixtures'),
+        )?.path,
+        equals(expected),
+      );
+
+      // None outside any package:
+      var tmp = Directory.systemTemp.createTempSync('dart_spawner_no_pkg_');
+      try {
+        expect(
+          DartProject.resolvePackageConfigFile(workingDirectory: tmp.path),
+          isNull,
+        );
+      } finally {
+        tmp.deleteSync(recursive: true);
+      }
+    });
+
     test('runDartVM with VM service options', () async {
       var project = DartProject();
 
